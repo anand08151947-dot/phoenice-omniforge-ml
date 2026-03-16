@@ -3,6 +3,7 @@ version: "3.9"
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: omniforge
       POSTGRES_USER: omniforge
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -27,6 +29,7 @@ services:
 
   minio:
     image: minio/minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -39,12 +42,15 @@ services:
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.14.1
+    restart: unless-stopped
+    # Install psycopg2-binary and boto3 (not bundled in the official image)
     command: >
+      bash -c "pip install --quiet psycopg2-binary boto3 &&
       mlflow server
       --backend-store-uri postgresql+psycopg2://omniforge:omniforge@postgres:5432/omniforge
       --default-artifact-root s3://models/
       --host 0.0.0.0
-      --port 5001
+      --port 5001"
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: minioadmin
@@ -59,6 +65,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
     ports:
       - "8000:8000"
     env_file: .env
@@ -78,6 +85,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://omniforge:omniforge@postgres:5432/omniforge
@@ -94,6 +102,7 @@ services:
 
   flower:
     image: mher/flower
+    restart: unless-stopped
     command: celery --broker=redis://redis:6379/0 flower --port=5555
     ports:
       - "5555:5555"

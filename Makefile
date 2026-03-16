@@ -1,4 +1,8 @@
-.PHONY: dev test test-backend test-e2e test-e2e-headed test-all migrate build lint up down
+.PHONY: dev start test test-backend test-e2e test-e2e-headed test-all migrate build lint up down
+
+## One-command startup after a reboot (Docker infra + local API/worker/frontend)
+start:
+	powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1
 
 dev:
 	docker compose up -d postgres redis minio

@@ -1,0 +1,65 @@
+# ── Virtual environment (image builds its own) ────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Frontend (not needed in backend images) ───────────────────────────────────
+client/
+tests/e2e/
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Test artifacts ────────────────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# ── Docs / markdown (not needed at runtime) ───────────────────────────────────
+docs/
+*.md
+LICENSE
+BACKLOG*
+TECH_STACK.md
+
+# ── Local Docker volumes ──────────────────────────────────────────────────────
+pgdata/
+minio_data/
+
+# ── MLflow / Optuna local artifacts ───────────────────────────────────────────
+mlruns/
+mlartifacts/
+*.db
+optuna_studies/
+
+# ── Large data files ──────────────────────────────────────────────────────────
+data/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Env files (injected at runtime via docker-compose env_file) ───────────────
+.env
+.env.*
+
+# ── Scratch / temp ────────────────────────────────────────────────────────────
+*.tmp
+*.bak
+*.orig

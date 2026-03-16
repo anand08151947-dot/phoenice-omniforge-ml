@@ -2,18 +2,19 @@
  * ModelTuningPanel — 3-tab drawer for model refinement
  *  Tab A: Fix Overfit  (one-click apply pre-computed remediation params)
  *  Tab B: Manual Tune  (sliders/inputs for each hyperparameter)
- *  Tab C: AutoTune     (Optuna n_trials config + progress)
+ *  Tab C: AutoTune     (Optuna n_trials config + live trial progress)
  */
 import {
   Box, Button, Chip, CircularProgress, Divider, Drawer, FormControl,
-  InputLabel, MenuItem, Select, Slider, Stack, Tab, Tabs, TextField,
-  Typography, Alert, LinearProgress,
+  InputLabel, LinearProgress, MenuItem, Select, Slider, Stack, Tab, Tabs, TextField,
+  Typography, Alert,
 } from '@mui/material'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import TuneIcon from '@mui/icons-material/Tune'
 import ScienceIcon from '@mui/icons-material/Science'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { HyperparamDef, ModelCandidate } from '../../api/types'
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -108,6 +109,41 @@ export default function ModelTuningPanel({ open, onClose, candidate, datasetId }
   const [tab, setTab] = useState(0)
   const qc = useQueryClient()
 
+  // ── Success state: store result to show hyperparams before closing ──────────
+  const [successResult, setSuccessResult] = useState<{
+    hyperparams: Record<string, unknown>
+    cv_score: number
+    source: 'manual' | 'autotune' | 'fix'
+    optuna_best_score?: number
+    optuna_n_trials?: number
+  } | null>(null)
+
+  // ── Autotune live progress polling ─────────────────────────────────────────
+  const [autotuneProgress, setAutotuneProgress] = useState<{
+    trial: number; total: number; best: number | null
+  } | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  function startPolling() {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/training/autotune-progress?model_id=${candidate.id}`)
+        if (r.ok) {
+          const d = await r.json()
+          if (d && d.total) setAutotuneProgress(d)
+        }
+      } catch { /* ignore */ }
+    }, 1500)
+  }
+
+  function stopPolling() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    setAutotuneProgress(null)
+  }
+
+  useEffect(() => () => stopPolling(), [])  // cleanup on unmount
+
   // Load hyperparameter space
   const { data: spaceData } = useQuery({
     queryKey: ['hparam-space', candidate.model_name],
@@ -141,8 +177,26 @@ export default function ModelTuningPanel({ open, onClose, candidate, datasetId }
 
   const [nTrials, setNTrials] = useState(30)
 
-  const invalidate = () => {
+  function handleSuccess(result: Record<string, unknown>, source: 'manual' | 'autotune' | 'fix') {
+    stopPolling()
+    // Extract the updated candidate from the returned training_results
+    const candidates = (result as { candidates?: ModelCandidate[] }).candidates ?? []
+    const updated = candidates.find((c: ModelCandidate) => c.id === candidate.id)
+    if (updated) {
+      setSuccessResult({
+        hyperparams: updated.hyperparams ?? {},
+        cv_score: updated.cv_score,
+        source,
+        optuna_best_score: updated.optuna_best_score,
+        optuna_n_trials: updated.optuna_n_trials,
+      })
+    }
     qc.invalidateQueries({ queryKey: ['training', datasetId] })
+  }
+
+  function handleClose() {
+    stopPolling()
+    setSuccessResult(null)
     onClose()
   }
 
@@ -154,7 +208,7 @@ export default function ModelTuningPanel({ open, onClose, candidate, datasetId }
       model_name: candidate.model_name,
       hyperparams: fixOverfitParams,
     }),
-    onSuccess: invalidate,
+    onSuccess: (r) => handleSuccess(r, 'fix'),
   })
 
   // Manual retrain mutation
@@ -165,18 +219,22 @@ export default function ModelTuningPanel({ open, onClose, candidate, datasetId }
       model_name: candidate.model_name,
       hyperparams: manualParams,
     }),
-    onSuccess: invalidate,
+    onSuccess: (r) => handleSuccess(r, 'manual'),
   })
 
   // AutoTune mutation
   const autotuneMutation = useMutation({
-    mutationFn: () => postAutotune({
-      dataset_id: datasetId,
-      model_id: candidate.id,
-      model_name: candidate.model_name,
-      n_trials: nTrials,
-    }),
-    onSuccess: invalidate,
+    mutationFn: () => {
+      startPolling()
+      return postAutotune({
+        dataset_id: datasetId,
+        model_id: candidate.id,
+        model_name: candidate.model_name,
+        n_trials: nTrials,
+      })
+    },
+    onSuccess: (r) => handleSuccess(r, 'autotune'),
+    onError: () => stopPolling(),
   })
 
   const isLoading = fixMutation.isPending || manualMutation.isPending || autotuneMutation.isPending
@@ -184,6 +242,47 @@ export default function ModelTuningPanel({ open, onClose, candidate, datasetId }
 
   const gap = candidate.train_score - candidate.cv_score
   const isHighOverfit = gap > 0.1
+
+  // ── Success overlay ────────────────────────────────────────────────────────
+  if (successResult) {
+    const label = successResult.source === 'autotune' ? 'AutoTune'
+      : successResult.source === 'fix' ? 'Fix Overfit' : 'Manual Tune'
+    return (
+      <Drawer anchor="right" open={open} onClose={handleClose} PaperProps={{ sx: { width: 420, p: 2 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <CheckCircleIcon sx={{ color: 'success.main', fontSize: 28 }} />
+          <Typography variant="h6" fontWeight={700}>{label} Complete</Typography>
+        </Box>
+
+        <Alert severity="success" sx={{ mb: 2 }}>
+          New CV Score: <strong>{(successResult.cv_score * 100).toFixed(2)}%</strong>
+          {successResult.optuna_best_score !== undefined && (
+            <> &nbsp;·&nbsp; Optuna best: <strong>{(successResult.optuna_best_score * 100).toFixed(2)}%</strong> over {successResult.optuna_n_trials} trials</>
+          )}
+        </Alert>
+
+        <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+          Key Hyperparameters Applied
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 3 }}>
+          {Object.entries(successResult.hyperparams).slice(0, 12).map(([k, v]) => (
+            <Chip
+              key={k}
+              label={`${k}: ${String(v)}`}
+              size="small"
+              variant="outlined"
+              color="primary"
+              sx={{ fontSize: '0.68rem', fontFamily: 'monospace' }}
+            />
+          ))}
+        </Box>
+
+        <Button variant="contained" fullWidth onClick={handleClose}>
+          Close &amp; View Updated Results
+        </Button>
+      </Drawer>
+    )
+  }
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose} PaperProps={{ sx: { width: 420, p: 2 } }}>
@@ -315,23 +414,45 @@ export default function ModelTuningPanel({ open, onClose, candidate, datasetId }
               value={nTrials}
               onChange={(_, v) => setNTrials(v as number)}
               marks={[{ value: 5, label: '5' }, { value: 30, label: '30' }, { value: 100, label: '100' }]}
+              disabled={isLoading}
             />
             <Typography variant="caption" color="text.secondary">
               More trials = better params, longer runtime. ~30 is a good balance.
             </Typography>
           </Box>
 
-          {candidate.optuna_best_score !== undefined && (
+          {candidate.optuna_best_score !== undefined && !autotuneMutation.isPending && (
             <Alert severity="success" sx={{ mb: 2 }}>
-              Previous AutoTune: best score {(candidate.optuna_best_score * 100).toFixed(2)}%
-              over {candidate.optuna_n_trials} trials.
+              Last AutoTune: best score <strong>{(candidate.optuna_best_score * 100).toFixed(2)}%</strong>
+              {' '}over {candidate.optuna_n_trials} trials.
             </Alert>
           )}
 
+          {/* Live trial progress */}
           {autotuneMutation.isPending && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Running {nTrials} Optuna trials… this may take a few minutes.
-            </Alert>
+            <Box sx={{ mb: 2 }}>
+              <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                <Typography variant="caption" color="text.secondary">
+                  {autotuneProgress
+                    ? `Trial ${autotuneProgress.trial} / ${autotuneProgress.total}`
+                    : 'Starting Optuna…'}
+                </Typography>
+                {autotuneProgress?.best != null && (
+                  <Typography variant="caption" color="primary" fontWeight={700}>
+                    Best so far: {(autotuneProgress.best * 100).toFixed(2)}%
+                  </Typography>
+                )}
+              </Stack>
+              <LinearProgress
+                variant={autotuneProgress ? 'determinate' : 'indeterminate'}
+                value={autotuneProgress ? (autotuneProgress.trial / autotuneProgress.total) * 100 : undefined}
+              />
+              {autotuneProgress && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  After all trials complete, best params will be retrained with full diagnostics…
+                </Typography>
+              )}
+            </Box>
           )}
 
           <Divider sx={{ my: 2 }} />

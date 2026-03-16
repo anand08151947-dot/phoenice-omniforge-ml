@@ -1,4 +1,4 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,59 +8,88 @@ __pycache__/
 dist/
 build/
 .eggs/
+*.pyd
+*.pyo
 
-# Virtual environments
+# ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
 env/
+ENV/
 
-# Environment files
+# ── Environment / secrets ─────────────────────────────────────────────────────
 .env
-.env.development.local
-client/.env.development.local
+.env.*
+!.env.example
 
-# IDE
+# ── IDE ───────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
-# Test
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Testing ───────────────────────────────────────────────────────────────────
 .coverage
+.coverage.*
 htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+coverage.xml
 
-# Docker volumes (local)
-pgdata/
-minio_data/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Node
-client/node_modules/
-client/dist/
-node_modules/
+# ── Playwright E2E ────────────────────────────────────────────────────────────
 tests/e2e/node_modules/
-
-# Playwright E2E artifacts (keep locally, not in repo)
 tests/e2e/test-results/
 tests/e2e/playwright-report/
 tests/e2e/.cache/
 **/playwright/.cache/
 
-# Large data files (use DVC or similar for versioning)
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+client/node_modules/
+client/dist/
+client/dist-ssr/
+client/*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Docker local volumes ──────────────────────────────────────────────────────
+pgdata/
+minio_data/
+
+# ── MLflow artifacts ──────────────────────────────────────────────────────────
+mlruns/
+mlartifacts/
+
+# ── Optuna ────────────────────────────────────────────────────────────────────
+*.db
+optuna_studies/
+
+# ── Large data files ──────────────────────────────────────────────────────────
 data/*.csv
 data/*.parquet
 data/*.json
+data/*.xlsx
+data/*.pkl
+data/*.joblib
 
-# MLflow artifacts
-mlruns/
-mlartifacts/
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Scratch / temp ────────────────────────────────────────────────────────────
+*.tmp
+*.bak
+*.orig
 BACKLOG_V1

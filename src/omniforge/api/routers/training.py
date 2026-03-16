@@ -231,6 +231,13 @@ async def retrain_single_endpoint(body: RetrainSingleRequest, db: AsyncSession =
     return results
 
 
+@router.get("/training/autotune-progress")
+async def get_autotune_progress_endpoint(model_id: str):
+    """Poll current Optuna trial progress while an autotune job is running."""
+    from ...ml.training.trainer import get_autotune_progress
+    return get_autotune_progress(model_id)
+
+
 @router.post("/training/autotune")
 async def autotune_endpoint(body: AutotuneRequest, db: AsyncSession = Depends(get_db)):
     """Run Optuna hyperparameter search for one model, patch training_results with best result."""

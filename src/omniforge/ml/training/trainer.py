@@ -833,7 +833,19 @@ def autotune_model(
         return float(np.mean(scores))
 
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+
+    # Track per-trial progress so the API can poll it
+    _AUTOTUNE_PROGRESS[model_id] = {"trial": 0, "total": n_trials, "best": None}
+
+    def _progress_cb(study: "optuna.Study", trial: "optuna.trial.FrozenTrial") -> None:
+        _AUTOTUNE_PROGRESS[model_id] = {
+            "trial": trial.number + 1,
+            "total": n_trials,
+            "best": round(study.best_value, 4) if study.best_trial else None,
+        }
+
+    study.optimize(objective, n_trials=n_trials, callbacks=[_progress_cb], show_progress_bar=False)
+    _AUTOTUNE_PROGRESS.pop(model_id, None)  # clear on completion
 
     best_params = study.best_params
     best_score = round(study.best_value, 4)
@@ -853,6 +865,15 @@ def autotune_model(
     result["optuna_n_trials"] = n_trials
     result["optuna_best_params"] = best_params
     return result
+
+
+# ── In-memory progress store (single-process dev) ─────────────────────────────
+_AUTOTUNE_PROGRESS: dict[str, dict] = {}  # model_id -> {trial, total, best}
+
+
+def get_autotune_progress(model_id: str) -> dict:
+    """Return current Optuna trial progress for a running autotune job."""
+    return _AUTOTUNE_PROGRESS.get(model_id, {})
 
 
 def _model_library(model_name: str) -> str:

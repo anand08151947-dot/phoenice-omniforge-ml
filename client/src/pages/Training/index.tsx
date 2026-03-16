@@ -1,3 +1,4 @@
+import React from 'react'
 import Box from '@mui/material/Box'
 import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
@@ -274,7 +275,7 @@ export default function TrainingPage() {
                     const colSpan = isClassifier ? 10 : 9
 
                     return (
-                      <>
+                      <React.Fragment key={c.id}>
                         <TableRow
                           key={c.id}
                           sx={{
@@ -364,7 +365,7 @@ export default function TrainingPage() {
                             </Collapse>
                           </TableCell>
                         </TableRow>
-                      </>
+                      </React.Fragment>
                     )
                   })}
                 </TableBody>
