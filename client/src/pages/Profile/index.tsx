@@ -4,6 +4,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../../components/shared/PageHeader'
 import MetricCard from '../../components/shared/MetricCard'
@@ -19,6 +20,7 @@ export default function ProfilePage() {
   const navigate = useNavigate()
   const datasetId = usePipelineStore((s) => s.datasetId)
   const datasetName = usePipelineStore((s) => s.datasetName)
+  const setPhaseStatus = usePipelineStore((s) => s.setPhaseStatus)
 
   const { data, isLoading, error } = useQuery<DatasetProfile | { status: string }>({
     queryKey: ['profile', datasetId],
@@ -29,6 +31,14 @@ export default function ProfilePage() {
       return d?.status === 'processing' ? 3000 : false
     },
   })
+
+  const profile = (data as DatasetProfile)?.columns ? (data as DatasetProfile) : null
+
+  useEffect(() => {
+    if (profile) {
+      setPhaseStatus('profile', 'done')
+    }
+  }, [profile, setPhaseStatus])
 
   if (!datasetId) {
     return (
@@ -55,7 +65,7 @@ export default function ProfilePage() {
     )
   }
 
-  if (error || !data || !(data as DatasetProfile).columns) {
+  if (error || !profile) {
     return (
       <Box>
         <PageHeader title="Dataset Profile" subtitle="Phase 1 — Statistical summary of all columns" />
@@ -63,8 +73,6 @@ export default function ProfilePage() {
       </Box>
     )
   }
-
-  const profile = data as DatasetProfile
 
   return (
     <Box>

@@ -42,8 +42,16 @@ export default function SamplingPage() {
   })
 
   if (isLoading) return <LinearProgress />
+  if (!data) {
+    return (
+      <Box>
+        <PageHeader title="Sampling & Balancing" subtitle="Phase 4 — Address class imbalance before training" />
+        <Alert severity="warning">Sampling data not available. Complete data cleaning first.</Alert>
+      </Box>
+    )
+  }
 
-  const { imbalance } = data!
+  const { imbalance } = data
   const COLORS = ['#6C63FF', '#FF6584', '#4CAF50', '#FFA726']
 
   async function handleApply() {

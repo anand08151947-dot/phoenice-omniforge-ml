@@ -47,11 +47,15 @@ async def get_cleaning_plan(dataset_id: str, db: AsyncSession = Depends(get_db))
     return plan
 
 
-def _apply_cleaning_inline(dataset_id: str, minio_path: str, original_filename: str, plan: dict, strategies: dict):
-    """Apply cleaning strategies, upload result to MinIO. Returns stats dict."""
+def _apply_cleaning_inline(dataset_id: str, minio_path: str, original_filename: str, plan: dict, strategies: dict, target_column: str | None):
+    """Apply cleaning strategies, upload result to MinIO, re-profile cleaned data. Returns stats dict."""
     from ...core.config import settings as _s
     from ...storage.minio import download_bytes, get_minio_client
     from ...ml.cleaning.cleaner import apply_cleaning_plan
+    from ...ml.profiling.profiler import profile_dataframe
+    from ...ml.eda.analyzer import analyze_dataframe
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker as _sm
 
     raw = download_bytes(_s.MINIO_BUCKET_DATASETS, minio_path)
     fname = original_filename.lower()
@@ -80,6 +84,50 @@ def _apply_cleaning_inline(dataset_id: str, minio_path: str, original_filename: 
         content_type="text/csv",
     )
 
+    # Re-profile the cleaned dataset so downstream pages see accurate stats
+    new_profile = profile_dataframe(dataset_id, df_clean)
+
+    # Recompute EDA from cleaned profile + cleaned dataframe
+    new_eda = analyze_dataframe(dataset_id, df_clean, new_profile, target_column)
+
+    # Regenerate cleaning plan from new profile (will show 0 issues if clean)
+    from ...ml.cleaning.cleaner import generate_cleaning_plan
+    new_cleaning_plan = generate_cleaning_plan(dataset_id, new_profile)
+
+    # Persist updated profile, eda, cleaning_plan and minio_path to DB
+    sync_url = _s.DATABASE_URL.replace(
+        "postgresql+asyncpg://", "postgresql+psycopg2://"
+    ).replace("postgresql+aiosqlite:///", "sqlite:///")
+    engine = create_engine(sync_url, pool_pre_ping=True)
+    Session = _sm(bind=engine)
+    session = Session()
+    try:
+        session.execute(
+            text(
+                """UPDATE datasets
+                   SET profile_data=:p, eda_report=:e, cleaning_plan=:cp,
+                       row_count=:r, col_count=:c, minio_path=:mp, updated_at=:now
+                   WHERE id=:id"""
+            ),
+            {
+                "id": dataset_id,
+                "p": json.dumps(new_profile),
+                "e": json.dumps(new_eda),
+                "cp": json.dumps(new_cleaning_plan),
+                "r": cleaned_shape[0],
+                "c": cleaned_shape[1],
+                "mp": clean_path,  # point dataset at the cleaned file going forward
+                "now": datetime.now(timezone.utc),
+            },
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        engine.dispose()
+
     return {
         "original_rows": original_shape[0],
         "original_cols": original_shape[1],
@@ -104,16 +152,11 @@ async def apply_cleaning(body: CleaningApplyRequest, db: AsyncSession = Depends(
     minio_path = dataset.minio_path
     original_filename = dataset.original_filename or "upload.csv"
     plan = dataset.cleaning_plan
+    target_column = dataset.target_column
 
     loop = asyncio.get_event_loop()
     stats = await loop.run_in_executor(
-        None, _apply_cleaning_inline, body.dataset_id, minio_path, original_filename, plan, body.strategies
+        None, _apply_cleaning_inline, body.dataset_id, minio_path, original_filename, plan, body.strategies, target_column
     )
-
-    await db.execute(
-        text("UPDATE datasets SET updated_at=:now WHERE id=:id"),
-        {"id": body.dataset_id, "now": datetime.now(timezone.utc)}
-    )
-    await db.commit()
 
     return {"status": "applied", **stats}

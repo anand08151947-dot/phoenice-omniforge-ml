@@ -43,7 +43,6 @@ export default function TrainingPage() {
   })
 
   if (isLoading) return <LinearProgress />
-  const job = data!
 
   const toggleModel = (id: string) =>
     setSelectedModels((prev) => prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id])
@@ -127,12 +126,12 @@ export default function TrainingPage() {
         </Grid>
       </Grid>
 
-      {showProgress && (
-        <SectionCard title="Training Progress" subheader={`Job: ${job.job_id} · Status: ${job.status}`} sx={{ mt: 2 }}>
+      {showProgress && data && (
+        <SectionCard title="Training Progress" subheader={`Job: ${data.job_id} · Status: ${data.status}`} sx={{ mt: 2 }}>
           <TrainingProgressPanel
-            candidates={job.candidates}
-            currentTrial={job.current_trial}
-            totalTrials={job.total_trials}
+            candidates={data.candidates}
+            currentTrial={data.current_trial}
+            totalTrials={data.total_trials}
             elapsedS={480}
             remainingS={120}
           />

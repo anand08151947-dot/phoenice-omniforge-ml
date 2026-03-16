@@ -3,6 +3,7 @@ import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import LinearProgress from '@mui/material/LinearProgress'
+import Alert from '@mui/material/Alert'
 import { useQuery } from '@tanstack/react-query'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
@@ -12,6 +13,7 @@ import PageHeader from '../../components/shared/PageHeader'
 import SectionCard from '../../components/shared/SectionCard'
 import MetricCard from '../../components/shared/MetricCard'
 import type { EvaluationReport } from '../../api/types'
+import { usePipelineStore } from '../../stores/pipeline'
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents'
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch'
 import { useMemo } from 'react'
@@ -70,9 +72,17 @@ function ConfusionMatrix({ labels, values }: { labels: string[]; values: number[
 }
 
 export default function EvaluationPage() {
-  const { data, isLoading } = useQuery<EvaluationReport>({
-    queryKey: ['evaluation'],
-    queryFn: () => fetch('/api/evaluation').then((r) => r.json()),
+  const datasetId = usePipelineStore((s) => s.datasetId)
+  const datasetName = usePipelineStore((s) => s.datasetName)
+
+  const { data, isLoading, error } = useQuery<EvaluationReport>({
+    queryKey: ['evaluation', datasetId],
+    queryFn: () => fetch(`/api/evaluation?dataset_id=${datasetId}`).then((r) => {
+      if (!r.ok) throw new Error(`Evaluation API returned ${r.status}`)
+      return r.json()
+    }),
+    enabled: !!datasetId,
+    retry: false,
   })
 
   const colDefs: any[] = useMemo(() => [
@@ -91,7 +101,17 @@ export default function EvaluationPage() {
   ], [])
 
   if (isLoading) return <LinearProgress />
-  const report = data!
+
+  if (error || !data) {
+    return (
+      <Box>
+        <PageHeader title="Model Evaluation" subtitle={`Phase 9 — ${datasetName ?? 'No dataset selected'}`} />
+        <Alert severity="info">No evaluation report available yet. Complete model training first.</Alert>
+      </Box>
+    )
+  }
+
+  const report = data
   const champion = report.leaderboard.find((m) => m.model_id === report.champion_model_id)
 
   return (

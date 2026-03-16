@@ -5,27 +5,59 @@ import Typography from '@mui/material/Typography'
 import LinearProgress from '@mui/material/LinearProgress'
 import Switch from '@mui/material/Switch'
 import Chip from '@mui/material/Chip'
+import Alert from '@mui/material/Alert'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
 import PageHeader from '../../components/shared/PageHeader'
 import MetricCard from '../../components/shared/MetricCard'
 import SectionCard from '../../components/shared/SectionCard'
 import type { FeatureSelectionReport } from '../../api/types'
+import { usePipelineStore } from '../../stores/pipeline'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 
 export default function SelectionPage() {
+  const navigate = useNavigate()
+  const datasetId = usePipelineStore((s) => s.datasetId)
+  const datasetName = usePipelineStore((s) => s.datasetName)
   const [keepOverrides, setKeepOverrides] = useState<Record<string, boolean>>({})
   const [applying, setApplying] = useState(false)
 
-  const { data, isLoading } = useQuery<FeatureSelectionReport>({
-    queryKey: ['selection'],
-    queryFn: () => fetch('/api/selection').then((r) => r.json()),
+  const { data, isLoading, error } = useQuery<FeatureSelectionReport>({
+    queryKey: ['selection', datasetId],
+    queryFn: () => fetch(`/api/selection?dataset_id=${datasetId}`).then((r) => {
+      if (!r.ok) throw new Error(`Selection API returned ${r.status}`)
+      return r.json()
+    }),
+    enabled: !!datasetId,
+    retry: false,
   })
 
+  if (!datasetId) {
+    return (
+      <Box>
+        <PageHeader title="Feature Selection" subtitle="Phase 6 — Rank and select the most predictive features" />
+        <Alert severity="info" action={<Button size="small" onClick={() => navigate('/upload')}>Upload Dataset</Button>}>
+          No dataset selected. Upload or select a dataset first.
+        </Alert>
+      </Box>
+    )
+  }
+
   if (isLoading) return <LinearProgress />
-  const report = data!
+
+  if (error || !data) {
+    return (
+      <Box>
+        <PageHeader title="Feature Selection" subtitle={`Phase 6 — ${datasetName}`} />
+        <Alert severity="warning">Feature selection report not available yet. Complete feature engineering first.</Alert>
+      </Box>
+    )
+  }
+
+  const report = data
 
   const features = report.importances.map((f) => ({
     ...f,
@@ -35,7 +67,11 @@ export default function SelectionPage() {
 
   async function handleApply() {
     setApplying(true)
-    await fetch('/api/selection/apply', { method: 'POST', body: JSON.stringify({ features }) })
+    await fetch('/api/selection/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataset_id: datasetId, features }),
+    })
     setApplying(false)
   }
 

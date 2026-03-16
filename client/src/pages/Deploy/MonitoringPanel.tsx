@@ -25,7 +25,8 @@ export default function MonitoringPanel({ deploymentId = 'dep_001' }: Monitoring
   })
 
   if (isLoading) return <LinearProgress />
-  const m = data!
+  if (!data) return null
+  const m = data
 
   const latencyData = [
     { name: 'p50', value: m.p50_latency_ms, fill: '#4CAF50' },
