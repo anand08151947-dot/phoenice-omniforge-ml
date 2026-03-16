@@ -1,0 +1,17 @@
+{
+  "name": "omniforge-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for Phoenice OmniForge ML — run periodically to validate all screens",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report",
+    "test:screens": "playwright test tests/screens.spec.ts",
+    "test:api-routes": "playwright test tests/api-routes.spec.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

@@ -123,6 +123,83 @@ See [`TECH_STACK.md`](TECH_STACK.md) for the full rationale.
 
 ---
 
+## 🧪 Testing
+
+The project ships a two-tier reusable test suite that can be run at any time to validate the full stack.
+
+### Backend — API Contract Tests (pytest)
+
+Covers all 20 backend endpoints: correct HTTP methods, missing-param validation (422), non-existent dataset (404), wrong-method rejection (405), and response shape checks.
+
+```bash
+# Run backend tests only
+.venv\Scripts\python.exe -m pytest tests/ --ignore=tests/e2e -q
+
+# Or via Make
+make test-backend
+```
+
+**Current baseline: 88 tests, 0 failures (~5 s)**
+
+### Frontend — E2E Browser Tests (Playwright)
+
+Covers all 14 UI screens and validates every outgoing API call against the known backend route list.
+
+```bash
+# Install Playwright browsers (first time only)
+make test-e2e-install
+
+# Run E2E tests headless (requires dev server + backend running)
+make test-e2e
+
+# Run with visible browser (useful for debugging)
+make test-e2e-headed
+
+# View last test report in browser
+make test-e2e-report
+```
+
+**Current baseline: 31 tests, 0 failures**
+
+What each E2E test validates:
+
+| Category | What is checked |
+|----------|-----------------|
+| **Screen loading** | Every route renders without a React crash (`Route Error`) |
+| **Page heading** | Main content area shows the expected page heading or a "no dataset" guard alert |
+| **No JS errors** | Zero unhandled console errors on page load |
+| **API route contract** | Every `/api/*` call from the frontend maps to a real backend endpoint |
+| **Dataset ID guard** | Pages with data dependencies do **not** call APIs when no dataset is selected |
+| **No phantom routes** | No calls to unimplemented endpoints (e.g. `/api/explain` before backend is ready) |
+
+### Run Everything
+
+```bash
+# Both suites in one command (requires backend + frontend dev servers running)
+make test-all
+
+# Windows PowerShell runner with server pre-flight checks
+.\scripts\run-tests.ps1 -Backend -E2E
+.\scripts\run-tests.ps1 -E2EHeaded   # headed browser
+```
+
+### Test File Locations
+
+```
+tests/
+├── test_api_contract.py      # 73 backend API contract tests
+├── test_upload.py            # Upload endpoint tests
+├── test_profile.py           # Profile / SSE endpoint tests
+├── test_pii.py               # PII scanner tests
+└── e2e/
+    ├── playwright.config.ts  # Playwright config (Chromium, localhost:5173)
+    └── tests/
+        ├── screens.spec.ts   # 16 screen-loading tests (14 routes + extras)
+        └── api-routes.spec.ts # 15 API call validation tests
+```
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -137,7 +214,8 @@ phoenice-omniforge-ml/
 ├── alembic/           # DB migrations
 ├── data/              # Dataset generator scripts
 ├── docs/              # Design docs & test plans
-├── tests/             # pytest test suite
+├── scripts/           # run-tests.ps1 and other utilities
+├── tests/             # pytest + Playwright test suites
 └── docker/            # Dockerfiles
 ```
 

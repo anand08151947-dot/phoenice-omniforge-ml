@@ -146,6 +146,10 @@ async def get_profile(dataset_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/profile/progress")
 async def profile_progress(dataset_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """SSE stream of profiling progress."""
+    # Validate dataset exists before entering the SSE loop
+    ds_result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    if ds_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
 
     async def event_generator():
         while True:
