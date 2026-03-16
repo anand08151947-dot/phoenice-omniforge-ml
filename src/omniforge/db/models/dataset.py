@@ -49,6 +49,8 @@ class Dataset(Base):
     sampling_config: Mapped[dict] = mapped_column(JSON, nullable=True)
     feature_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
     selection_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
+    training_results: Mapped[dict] = mapped_column(JSON, nullable=True)
+    evaluation_results: Mapped[dict] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -254,6 +254,18 @@ export interface FeatureSelectionReport {
   selected_count: number
   dropped_count: number
   method: string
+  audit?: {
+    applied_at: string
+    selected_count: number
+    dropped_count: number
+    total_count: number
+    kept_features: string[]
+    dropped_features: string[]
+    pinned_count: number
+    excluded_count: number
+    auto_count: number
+    method: string
+  }
 }
 
 // ── Training ─────────────────────────────────────────────────

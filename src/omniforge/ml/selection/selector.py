@@ -21,8 +21,8 @@ def _safe(val: Any) -> float:
 
 def compute_selection(dataset_id: str, df: pd.DataFrame, target_column: str, method: str = "mutual_info") -> dict:
     """Compute feature importances and recommend keep/drop."""
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    feat_cols = [c for c in numeric_cols if c != target_column]
+    # Include ALL non-target columns, encoding categoricals
+    feat_cols = [c for c in df.columns if c != target_column]
 
     if not feat_cols or target_column not in df.columns:
         return {
@@ -33,7 +33,25 @@ def compute_selection(dataset_id: str, df: pd.DataFrame, target_column: str, met
             "method": method,
         }
 
-    X = df[feat_cols].fillna(df[feat_cols].median(numeric_only=True))
+    from sklearn.preprocessing import LabelEncoder
+
+    # Build X: numeric as-is, categoricals label-encoded
+    X_parts = {}
+    discrete_mask = []
+    for col in feat_cols:
+        series = df[col]
+        if series.dtype == "object" or str(series.dtype) == "category":
+            le = LabelEncoder()
+            encoded = le.fit_transform(series.fillna("__missing__").astype(str))
+            X_parts[col] = encoded
+            discrete_mask.append(True)
+        else:
+            filled = pd.to_numeric(series, errors="coerce")
+            X_parts[col] = filled.fillna(filled.median()).values
+            discrete_mask.append(False)
+
+    X = pd.DataFrame(X_parts)
+
     y = df[target_column].dropna()
     X = X.loc[y.index]
 
@@ -41,24 +59,23 @@ def compute_selection(dataset_id: str, df: pd.DataFrame, target_column: str, met
 
     try:
         from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
-        from sklearn.preprocessing import LabelEncoder
 
         n_unique = y.nunique()
         if n_unique <= 20:
             le = LabelEncoder()
             y_enc = le.fit_transform(y.astype(str))
-            scores = mutual_info_classif(X, y_enc, random_state=42, n_neighbors=3)
+            scores = mutual_info_classif(X, y_enc, discrete_features=discrete_mask, random_state=42, n_neighbors=3)
         else:
-            scores = mutual_info_regression(X, y.values, random_state=42, n_neighbors=3)
+            scores = mutual_info_regression(X, y.values, discrete_features=discrete_mask, random_state=42, n_neighbors=3)
         importances_raw = [_safe(s) for s in scores]
         method = "mutual_info"
     except Exception:
         # Fallback: absolute Pearson correlation
         importances_raw = []
-        for c in feat_cols:
+        for col in feat_cols:
             try:
-                v = abs(_safe(df[c].corr(df[target_column])))
-                importances_raw.append(v)
+                v = abs(_safe(pd.to_numeric(df[col], errors="coerce").corr(pd.to_numeric(df[target_column], errors="coerce"))))
+                importances_raw.append(0.0 if (v != v) else v)  # NaN → 0
             except Exception:
                 importances_raw.append(0.0)
         method = "pearson_abs"

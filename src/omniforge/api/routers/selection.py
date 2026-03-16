@@ -101,12 +101,32 @@ async def apply_selection(body: SelectionApplyRequest, db: AsyncSession = Depend
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     import copy
+    from datetime import datetime as _dt, timezone as _tz
     from sqlalchemy.orm.attributes import flag_modified
 
     plan = copy.deepcopy(dataset.selection_plan or {})
     plan["importances"] = body.features
     plan["selected_count"] = sum(1 for f in body.features if f.get("keep"))
     plan["dropped_count"] = sum(1 for f in body.features if not f.get("keep"))
+
+    kept_features = [f["feature"] for f in body.features if f.get("keep")]
+    dropped_features = [f["feature"] for f in body.features if not f.get("keep")]
+    pinned = [f["feature"] for f in body.features if f.get("override") == "pinned"]
+    excluded = [f["feature"] for f in body.features if f.get("override") == "excluded"]
+
+    plan["audit"] = {
+        "applied_at": _dt.now(_tz.utc).isoformat(),
+        "selected_count": plan["selected_count"],
+        "dropped_count": plan["dropped_count"],
+        "total_count": len(body.features),
+        "kept_features": kept_features,
+        "dropped_features": dropped_features,
+        "pinned_count": len(pinned),
+        "excluded_count": len(excluded),
+        "auto_count": plan["selected_count"] - len(pinned),
+        "method": plan.get("method", "mutual_info"),
+    }
+
     dataset.selection_plan = plan
     flag_modified(dataset, "selection_plan")
     dataset.updated_at = datetime.now(timezone.utc)
@@ -116,4 +136,5 @@ async def apply_selection(body: SelectionApplyRequest, db: AsyncSession = Depend
         "status": "saved",
         "selected_count": plan["selected_count"],
         "dropped_count": plan["dropped_count"],
+        "audit": plan["audit"],
     }
