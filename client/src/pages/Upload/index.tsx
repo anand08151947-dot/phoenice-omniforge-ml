@@ -71,7 +71,9 @@ function TargetColumnSelector({ dataset, onSaved }: { dataset: Dataset; onSaved:
           >
             <MenuItem value="classification">Classification</MenuItem>
             <MenuItem value="regression">Regression</MenuItem>
-            <MenuItem value="clustering">Clustering</MenuItem>
+            <MenuItem value="clustering">Clustering (unsupervised)</MenuItem>
+            <MenuItem value="anomaly_detection">Anomaly Detection</MenuItem>
+            <MenuItem value="forecasting">Time Series Forecasting</MenuItem>
           </Select>
         </FormControl>
       )}

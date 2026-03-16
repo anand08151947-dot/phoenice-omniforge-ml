@@ -90,7 +90,40 @@ async def get_eda(dataset_id: str, db: AsyncSession = Depends(get_db)):
     return report
 
 
-@router.post("/eda/recompute/{dataset_id}")
+from pydantic import BaseModel
+
+
+class FeatureOverridesRequest(BaseModel):
+    dataset_id: str
+    overrides: dict[str, str]  # {feature_name: 'auto' | 'include' | 'exclude'}
+
+
+@router.post("/eda/overrides")
+async def save_feature_overrides(body: FeatureOverridesRequest, db: AsyncSession = Depends(get_db)):
+    """Persist user-defined feature include/exclude overrides into eda_report."""
+    result = await db.execute(select(Dataset).where(Dataset.id == body.dataset_id))
+    dataset = result.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if not dataset.eda_report:
+        raise HTTPException(status_code=422, detail="Run EDA first")
+
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+    report = copy.deepcopy(dataset.eda_report)
+    report["feature_overrides"] = body.overrides
+    dataset.eda_report = report
+    flag_modified(dataset, "eda_report")
+    dataset.updated_at = datetime.now(timezone.utc)
+    # Clear cached selection_plan so Phase 6 recomputes with new overrides
+    await db.execute(
+        text("UPDATE datasets SET eda_report=:r, selection_plan=NULL, updated_at=:now WHERE id=:id"),
+        {"id": body.dataset_id, "r": json.dumps(report), "now": datetime.now(timezone.utc)}
+    )
+    await db.commit()
+    return {"status": "saved", "overrides": body.overrides}
+
+
 async def recompute_eda(dataset_id: str, db: AsyncSession = Depends(get_db)):
     """Force recompute EDA (useful after setting target column)."""
     result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))

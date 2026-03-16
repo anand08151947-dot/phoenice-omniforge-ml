@@ -50,6 +50,19 @@ export default function EDAPage() {
     enabled: !!datasetId,
   })
 
+  // Fetch sampling config to know if imbalance has been addressed
+  const { data: samplingData } = useQuery<{ config?: { strategy?: string } }>({
+    queryKey: ['sampling', datasetId],
+    queryFn: () => fetch(`/api/sampling?dataset_id=${datasetId}`).then((r) => r.ok ? r.json() : null),
+    enabled: !!datasetId,
+    retry: false,
+  })
+
+  const addressedPhases: Record<string, string> = {}
+  if (samplingData?.config?.strategy) {
+    addressedPhases['sampling'] = `Strategy saved: ${samplingData.config.strategy.replace(/_/g, ' ')}`
+  }
+
   if (!datasetId) {
     return (
       <Box>
@@ -76,14 +89,17 @@ export default function EDAPage() {
   }
 
   const report = edaReport
-  const criticalCount = report.issues.filter((i) => i.severity === 'critical' || i.severity === 'high').length
+  // Don't count issues as "critical" if the responsible phase has already addressed them
+  const openCritical = report.issues.filter(
+    (i) => (i.severity === 'critical' || i.severity === 'high') && !addressedPhases[i.phase]
+  ).length
 
   return (
     <Box>
       <PageHeader
         title="Exploratory Data Analysis"
         subtitle="Phase 2 — Automated insights, issue detection, and readiness assessment"
-        badge={criticalCount > 0 ? <Chip icon={<WarningAmberIcon />} label={`${criticalCount} Critical Issues`} color="error" size="small" /> : undefined}
+        badge={openCritical > 0 ? <Chip icon={<WarningAmberIcon />} label={`${openCritical} Open Issues`} color="error" size="small" /> : undefined}
       />
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', mb: 0 }}>
@@ -96,7 +112,7 @@ export default function EDAPage() {
 
       <TabPanel value={tab} index={0}>
         <Suspense fallback={<LinearProgress />}>
-          <IssuesSummary issues={report.issues} />
+          <IssuesSummary issues={report.issues} addressedPhases={addressedPhases} />
         </Suspense>
       </TabPanel>
       <TabPanel value={tab} index={1}>

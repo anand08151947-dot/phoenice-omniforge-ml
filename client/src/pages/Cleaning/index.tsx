@@ -7,6 +7,7 @@ import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
+import Tooltip from '@mui/material/Tooltip'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -20,6 +21,19 @@ import CleaningServicesIcon from '@mui/icons-material/CleaningServices'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import HistoryIcon from '@mui/icons-material/History'
+
+interface CleaningAudit {
+  original_rows: number
+  original_cols: number
+  cleaned_rows: number
+  cleaned_cols: number
+  rows_removed: number
+  cols_removed: number
+  cleaned_path: string
+  applied_strategies: Record<string, string>
+  applied_at: string
+}
 
 interface CleaningResult {
   original_rows: number
@@ -103,6 +117,8 @@ export default function CleaningPage() {
     }
   }
 
+  const audit = (result as any) ?? plan?.audit ?? null
+
   return (
     <Box>
       <PageHeader
@@ -111,20 +127,111 @@ export default function CleaningPage() {
         actions={
           <Button
             variant="contained"
-            startIcon={result ? <CheckCircleIcon /> : <PlayArrowIcon />}
+            startIcon={audit ? <CheckCircleIcon /> : <PlayArrowIcon />}
             onClick={handleApply}
             disabled={applying}
-            color={result ? 'success' : 'primary'}
+            color={audit ? 'success' : 'primary'}
           >
-            {applying ? 'Applying…' : result ? 'Re-Apply Plan' : 'Apply Cleaning Plan'}
+            {applying ? 'Applying…' : audit ? 'Re-Apply Plan' : 'Apply Cleaning Plan'}
           </Button>
         }
       />
 
-      {/* Before stats (plan estimates) */}
+      {/* Cleaning audit — persists across page refresh via plan.audit in DB */}
+      {audit && (
+        <SectionCard
+          title="Cleaning Audit"
+          subheader={
+            audit.applied_at
+              ? `Applied ${new Date(audit.applied_at).toLocaleString()} — dataset cleaned and saved`
+              : 'Cleaning applied — dataset saved to storage'
+          }
+          sx={{ mb: 3, border: '1px solid', borderColor: 'success.dark' }}
+        >
+          <Grid container spacing={2} sx={{ p: 2 }}>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Rows Before</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>{audit.original_rows.toLocaleString()}</Typography>
+              </Box>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Rows After</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>{audit.cleaned_rows.toLocaleString()}</Typography>
+                <Chip
+                  label={audit.rows_removed > 0 ? `−${audit.rows_removed.toLocaleString()} removed` : 'No rows removed'}
+                  size="small"
+                  color={audit.rows_removed > 0 ? 'warning' : 'success'}
+                  sx={{ mt: 0.5 }}
+                />
+              </Box>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Columns Before</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>{audit.original_cols}</Typography>
+              </Box>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 3 }}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Columns After</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>{audit.cleaned_cols}</Typography>
+                <Chip
+                  label={audit.cols_removed > 0 ? `−${audit.cols_removed} dropped` : 'No columns dropped'}
+                  size="small"
+                  color={audit.cols_removed > 0 ? 'warning' : 'success'}
+                  sx={{ mt: 0.5 }}
+                />
+              </Box>
+            </Grid>
+          </Grid>
+
+          {/* Applied strategies breakdown */}
+          {audit.applied_strategies && Object.keys(audit.applied_strategies).length > 0 && (
+            <>
+              <Divider sx={{ mx: 2 }} />
+              <Box sx={{ px: 2, py: 1.5 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                  <HistoryIcon sx={{ fontSize: '1rem' }} /> Strategies Applied
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {Object.entries(audit.applied_strategies).map(([actionId, strategy]) => (
+                    <Tooltip key={actionId} title={`Rule: ${actionId}`} placement="top" arrow>
+                      <Chip
+                        label={`${actionId.split('_').slice(0, 2).join(' ')} → ${strategy.replace(/_/g, ' ')}`}
+                        size="small"
+                        variant="outlined"
+                        color="info"
+                        sx={{ fontSize: '0.68rem', fontFamily: 'monospace' }}
+                      />
+                    </Tooltip>
+                  ))}
+                </Box>
+              </Box>
+            </>
+          )}
+
+          <Divider sx={{ mx: 2 }} />
+          <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <CheckCircleIcon color="success" fontSize="small" />
+            <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+              Cleaned dataset saved to storage.
+            </Typography>
+            <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace', ml: 1 }}>
+              {audit.cleaned_path}
+            </Typography>
+            <Button size="small" endIcon={<ArrowForwardIcon />} sx={{ ml: 'auto' }} onClick={() => navigate('/eda')}>
+              View EDA
+            </Button>
+          </Box>
+        </SectionCard>
+      )}
+
+      {/* Before stats (plan estimates — only meaningful if there are pending issues) */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
-          <MetricCard label="Issues Detected" value={plan.actions.length} icon={<CleaningServicesIcon />} color="#EF5350" />
+          <MetricCard label="Issues Detected" value={plan.actions.length} icon={<CleaningServicesIcon />} color={plan.actions.length > 0 ? '#EF5350' : '#4CAF50'} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
           <MetricCard label="Est. Rows Affected" value={plan.estimated_rows_affected.toLocaleString()} icon={<CleaningServicesIcon />} color="#FFA726" />
@@ -134,60 +241,21 @@ export default function CleaningPage() {
         </Grid>
       </Grid>
 
-      {/* After stats (actual result) */}
-      {result && (
-        <SectionCard
-          title="Cleaning Results"
-          subheader="Actual changes applied to the dataset"
-          sx={{ mb: 3, border: '1px solid', borderColor: 'success.dark' }}
-        >
-          <Grid container spacing={3} sx={{ p: 2 }}>
-            {/* Rows */}
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Rows Before</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary' }}>{result.original_rows.toLocaleString()}</Typography>
-              </Box>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Rows After</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>{result.cleaned_rows.toLocaleString()}</Typography>
-                <Chip label={`−${result.rows_removed.toLocaleString()} removed`} size="small" color={result.rows_removed > 0 ? 'warning' : 'default'} sx={{ mt: 0.5 }} />
-              </Box>
-            </Grid>
-            {/* Cols */}
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Columns Before</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary' }}>{result.original_cols}</Typography>
-              </Box>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>Columns After</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>{result.cleaned_cols}</Typography>
-                <Chip label={`−${result.cols_removed} dropped`} size="small" color={result.cols_removed > 0 ? 'warning' : 'default'} sx={{ mt: 0.5 }} />
-              </Box>
-            </Grid>
-          </Grid>
-          <Divider sx={{ mx: 2 }} />
-          <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <CheckCircleIcon color="success" fontSize="small" />
-            <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
-              Cleaned dataset saved to storage.
-            </Typography>
-            <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace', ml: 1 }}>
-              {result.cleaned_path}
-            </Typography>
-            <Button size="small" endIcon={<ArrowForwardIcon />} sx={{ ml: 'auto' }} onClick={() => navigate('/eda')}>
-              Proceed to EDA
-            </Button>
-          </Box>
-        </SectionCard>
-      )}
+      {plan.actions.length === 0 && audit ? (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          <strong>Dataset is clean.</strong> All issues were resolved in the previous cleaning run. The cleaned dataset is ready for EDA and downstream phases.
+        </Alert>
+      ) : plan.actions.length === 0 ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No cleaning issues detected in this dataset. Proceed to EDA.
+        </Alert>
+      ) : null}
 
-      <SectionCard title="Cleaning Rules" subheader="Configure the strategy for each detected issue — then click Apply" noPadding>
+      <SectionCard
+        title="Cleaning Rules"
+        subheader={plan.actions.length > 0 ? 'Configure the strategy for each detected issue — then click Apply' : 'No pending issues — dataset is clean'}
+        noPadding
+      >
         <Box sx={{ px: 2, py: 1, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '16% 1fr 12% 18% 1fr', gap: 2 }}>
             {['Column', 'Issue', 'Severity', 'Strategy', 'Impact'].map((h) => (
@@ -195,7 +263,12 @@ export default function CleaningPage() {
             ))}
           </Box>
         </Box>
-        {plan.actions.map((action) => (
+        {plan.actions.length === 0 ? (
+          <Box sx={{ px: 2, py: 4, textAlign: 'center' }}>
+            <CheckCircleIcon color="success" sx={{ fontSize: '2.5rem', mb: 1 }} />
+            <Typography variant="body2" color="text.secondary">No issues — all columns are clean</Typography>
+          </Box>
+        ) : plan.actions.map((action) => (
           <CleaningRule
             key={action.id}
             action={action}

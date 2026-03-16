@@ -20,6 +20,8 @@ class TaskType(str, enum.Enum):
     classification = "classification"
     regression = "regression"
     clustering = "clustering"
+    anomaly_detection = "anomaly_detection"
+    forecasting = "forecasting"
     unknown = "unknown"
 
 
@@ -44,6 +46,9 @@ class Dataset(Base):
     pii_report: Mapped[dict] = mapped_column(JSON, nullable=True)
     eda_report: Mapped[dict] = mapped_column(JSON, nullable=True)
     cleaning_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
+    sampling_config: Mapped[dict] = mapped_column(JSON, nullable=True)
+    feature_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
+    selection_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

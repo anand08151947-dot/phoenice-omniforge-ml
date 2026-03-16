@@ -94,6 +94,20 @@ def _apply_cleaning_inline(dataset_id: str, minio_path: str, original_filename: 
     from ...ml.cleaning.cleaner import generate_cleaning_plan
     new_cleaning_plan = generate_cleaning_plan(dataset_id, new_profile)
 
+    # Embed the audit trail so the UI can show "what was cleaned" persistently
+    audit = {
+        "original_rows": original_shape[0],
+        "original_cols": original_shape[1],
+        "cleaned_rows": cleaned_shape[0],
+        "cleaned_cols": cleaned_shape[1],
+        "rows_removed": original_shape[0] - cleaned_shape[0],
+        "cols_removed": original_shape[1] - cleaned_shape[1],
+        "cleaned_path": clean_path,
+        "applied_strategies": strategies,
+        "applied_at": datetime.now(timezone.utc).isoformat(),
+    }
+    new_cleaning_plan["audit"] = audit
+
     # Persist updated profile, eda, cleaning_plan and minio_path to DB
     sync_url = _s.DATABASE_URL.replace(
         "postgresql+asyncpg://", "postgresql+psycopg2://"
@@ -128,15 +142,7 @@ def _apply_cleaning_inline(dataset_id: str, minio_path: str, original_filename: 
         session.close()
         engine.dispose()
 
-    return {
-        "original_rows": original_shape[0],
-        "original_cols": original_shape[1],
-        "cleaned_rows": cleaned_shape[0],
-        "cleaned_cols": cleaned_shape[1],
-        "rows_removed": original_shape[0] - cleaned_shape[0],
-        "cols_removed": original_shape[1] - cleaned_shape[1],
-        "cleaned_path": clean_path,
-    }
+    return audit
 
 
 @router.post("/cleaning/apply")

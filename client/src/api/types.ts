@@ -12,7 +12,7 @@ export interface Dataset {
   created_at: string
   status: 'ready' | 'processing' | 'error'
   target_column?: string
-  task_type?: 'classification' | 'regression' | 'clustering'
+  task_type?: 'classification' | 'regression' | 'clustering' | 'anomaly_detection' | 'forecasting'
 }
 
 export interface ColumnProfile {
@@ -87,6 +87,7 @@ export interface EDAReport {
   correlation_matrix: CorrelationMatrix
   target_distribution: Array<{ label: string; count: number }>
   mi_scores: Array<{ feature: string; score: number }>
+  feature_overrides?: Record<string, 'auto' | 'include' | 'exclude'>
 }
 
 // ── PII ──────────────────────────────────────────────────────
@@ -152,6 +153,17 @@ export interface CleaningPlan {
   actions: CleaningAction[]
   estimated_rows_affected: number
   estimated_cols_removed: number
+  audit?: {
+    original_rows: number
+    original_cols: number
+    cleaned_rows: number
+    cleaned_cols: number
+    rows_removed: number
+    cols_removed: number
+    cleaned_path: string
+    applied_strategies: Record<string, string>
+    applied_at: string
+  }
 }
 
 // ── Sampling ─────────────────────────────────────────────────
@@ -225,7 +237,7 @@ export interface FeatureImportance {
   feature: string
   importance: number
   rank: number
-  method: 'random_forest' | 'mutual_info' | 'permutation' | 'shap'
+  method: 'random_forest' | 'mutual_info' | 'permutation' | 'shap' | 'pearson_abs'
   keep: boolean
 }
 
