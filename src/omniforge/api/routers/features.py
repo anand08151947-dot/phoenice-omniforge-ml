@@ -170,7 +170,7 @@ def _apply_features_inline(dataset_id: str, minio_path: str, original_filename: 
         session.execute(
             text("""UPDATE datasets SET profile_data=:p, minio_path=:mp,
                       row_count=:r, col_count=:c,
-                      eda_report=NULL, cleaning_plan=NULL, selection_plan=NULL,
+                      eda_report=NULL, selection_plan=NULL,
                       updated_at=:now WHERE id=:id"""),
             {"id": dataset_id, "p": json.dumps(new_profile), "mp": feat_path,
              "r": final_df.shape[0], "c": final_df.shape[1],
