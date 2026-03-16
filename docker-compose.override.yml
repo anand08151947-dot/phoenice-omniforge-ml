@@ -1,0 +1,12 @@
+# Dev overrides: hot reload for API, Flower UI
+version: "3.9"
+
+services:
+  api:
+    command: ["uvicorn", "omniforge.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DEBUG: "true"
+
+  flower:
+    ports:
+      - "5555:5555"

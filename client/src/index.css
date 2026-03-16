@@ -1,0 +1,26 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* AG Grid dark override */
+.ag-theme-alpine-dark {
+  --ag-background-color: transparent;
+  --ag-header-background-color: rgba(255,255,255,0.05);
+  --ag-odd-row-background-color: rgba(255,255,255,0.02);
+  --ag-row-hover-color: rgba(108,99,255,0.1);
+  --ag-selected-row-background-color: rgba(108,99,255,0.2);
+  --ag-font-size: 13px;
+}

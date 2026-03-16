@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.development.local
+client/.env.development.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Docker volumes (local)
+pgdata/
+minio_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node
+client/node_modules/
+client/dist/
+
+# Large data files (use DVC or similar for versioning)
+data/*.csv
+data/*.parquet
+data/*.json
+
+# MLflow artifacts
+mlruns/
+mlartifacts/
