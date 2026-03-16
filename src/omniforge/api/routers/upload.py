@@ -40,6 +40,25 @@ class DatasetPatch(BaseModel):
     task_type: str | None = None
 
 
+@router.get("/datasets/{dataset_id}/smart-profile")
+async def get_smart_profile(dataset_id: str, db: AsyncSession = Depends(get_db)):
+    """Derive ML-expert insights from the stored profile_data."""
+    from ...ml.analysis.smart_profile import compute_smart_profile
+
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.status != DatasetStatus.ready or not dataset.profile_data:
+        raise HTTPException(status_code=202, detail="Profiling not complete yet")
+
+    return compute_smart_profile(
+        profile_data=dataset.profile_data,
+        target_col=dataset.target_column,
+        task_type=dataset.task_type.value if dataset.task_type else None,
+    )
+
+
 @router.get("/datasets", response_model=list[DatasetOut])
 async def list_datasets(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Dataset).order_by(Dataset.created_at.desc()))

@@ -4,10 +4,11 @@ import Chip from '@mui/material/Chip'
 import LinearProgress from '@mui/material/LinearProgress'
 import Tooltip from '@mui/material/Tooltip'
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer } from 'recharts'
-import type { ColumnProfile } from '../../api/types'
+import type { ColumnProfile, FeatureQualityScore } from '../../api/types'
 
 interface ColumnCardProps {
   col: ColumnProfile
+  qualityScore?: FeatureQualityScore
 }
 
 const typeColors: Record<string, string> = {
@@ -18,8 +19,15 @@ const typeColors: Record<string, string> = {
   boolean: '#26C6DA',
 }
 
-export default function ColumnCard({ col }: ColumnCardProps) {
+const GRADE_COLORS: Record<string, string> = {
+  Good: '#4caf50',
+  Review: '#ff9800',
+  Problematic: '#f44336',
+}
+
+export default function ColumnCard({ col, qualityScore }: ColumnCardProps) {
   const hasHistogram = col.histogram && col.histogram.length > 0
+  const gradeColor = qualityScore ? GRADE_COLORS[qualityScore.grade] : undefined
 
   return (
     <Box
@@ -27,18 +35,27 @@ export default function ColumnCard({ col }: ColumnCardProps) {
         p: 2,
         bgcolor: 'background.paper',
         border: '1px solid',
-        borderColor: col.is_target ? 'primary.main' : 'divider',
+        borderColor: col.is_target ? 'primary.main' : gradeColor ? `${gradeColor}40` : 'divider',
         borderRadius: 2,
         position: 'relative',
         height: '100%',
       }}
     >
+      {/* Quality score badge */}
+      {qualityScore && !col.is_target && (
+        <Tooltip title={qualityScore.issues.length ? qualityScore.issues.join(' · ') : 'No issues detected'}>
+          <Box sx={{
+            position: 'absolute', top: 8, left: 8, width: 8, height: 8,
+            borderRadius: '50%', bgcolor: gradeColor, cursor: 'help',
+          }} />
+        </Tooltip>
+      )}
       {col.is_target && (
         <Chip label="TARGET" color="primary" size="small" sx={{ position: 'absolute', top: 8, right: 8, fontWeight: 800, fontSize: '0.65rem' }} />
       )}
 
       {/* Column name & type */}
-      <Box sx={{ mb: 1, pr: col.is_target ? 7 : 0 }}>
+      <Box sx={{ mb: 1, pr: col.is_target ? 7 : 0, pl: qualityScore && !col.is_target ? 1.5 : 0 }}>
         <Typography variant="body2" sx={{ fontWeight: 700, fontFamily: 'monospace', mb: 0.25 }}>{col.name}</Typography>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           <Chip label={col.inferred_type} size="small" sx={{ bgcolor: typeColors[col.inferred_type], color: 'white', fontWeight: 600, fontSize: '0.65rem' }} />
@@ -86,6 +103,9 @@ export default function ColumnCard({ col }: ColumnCardProps) {
               />
             </Tooltip>
           )}
+          {qualityScore?.issues.map(issue => (
+            <Chip key={issue} label={issue} size="small" color="warning" sx={{ fontSize: '0.6rem', mt: 0.5, height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }} />
+          ))}
         </Box>
       )}
 

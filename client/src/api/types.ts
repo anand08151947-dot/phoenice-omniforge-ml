@@ -427,7 +427,165 @@ export interface TrainingProgress {
   candidates: ModelCandidate[]
 }
 
-// ── Evaluation ────────────────────────────────────────────────
+// ── Smart Profile ─────────────────────────────────────────────
+export interface SmartOverview {
+  row_count: number
+  col_count: number
+  memory_mb: number
+  duplicate_rows: number
+  duplicate_pct: number
+  missing_cells: number
+  missing_pct: number
+}
+
+export interface ColumnTypeSummary {
+  numeric: number
+  categorical: number
+  datetime: number
+  text: number
+  boolean: number
+  high_cardinality: string[]
+  constant_columns: string[]
+}
+
+export interface TargetCandidate {
+  name: string
+  score: number
+  inferred_task: string
+  reasons: string[]
+  warnings: string[]
+  is_recommended: boolean
+}
+
+export interface TaskRecommendation {
+  task: string
+  confidence: number
+  why: string[]
+  alternatives: string[]
+}
+
+export interface ClassDist {
+  label: string
+  count: number
+  pct: number
+}
+
+export interface TargetDistribution {
+  type: 'classification' | 'regression'
+  // classification
+  classes?: ClassDist[]
+  imbalance?: string
+  minority_pct?: number
+  unique_count?: number
+  // regression
+  mean?: number
+  std?: number
+  min?: number
+  max?: number
+  skewness?: number
+  outliers_likely?: boolean
+  outlier_count?: number
+  histogram?: Array<{ bin: string; count: number }>
+  missing_pct: number
+}
+
+export interface ImbalanceSeverity {
+  severity: string
+  minority_pct?: number
+  techniques: string[]
+  recommended_metric?: string
+  metric_reason?: string
+}
+
+export interface TimeAwareness {
+  has_datetime: boolean
+  datetime_columns: string[]
+  options?: Array<{ id: string; label: string }>
+  recommended?: string
+}
+
+export interface DataQualityWarning {
+  type: string
+  severity: 'high' | 'medium' | 'low'
+  message: string
+  column?: string
+  correlation?: number
+}
+
+export interface FeaturePreviewItem {
+  name: string
+  type: string
+  missing_pct: number
+  unique_count: number
+  is_constant: boolean
+  is_id_like: boolean
+  is_datetime: boolean
+  min?: number
+  max?: number
+  skewed?: boolean
+  outliers_likely?: boolean
+  outlier_pct_est?: number
+  suggested_transform?: string | null
+  top_values?: string[]
+  cardinality_health?: 'ok' | 'review' | 'problematic' | 'drop'
+  suggested_encoding?: string
+  rare_category_pct?: number
+}
+
+export interface FeatureQualityScore {
+  score: number
+  grade: 'Good' | 'Review' | 'Problematic'
+  issues: string[]
+}
+
+export interface ComplexityIndicators {
+  feature_count: number
+  row_count: number
+  feature_row_ratio: number
+  sample_sufficiency: string
+  warnings: string[]
+  suggestions: string[]
+}
+
+export interface DataTypeIssue {
+  column: string
+  issue: string
+  severity: 'low' | 'medium' | 'high'
+  message: string
+}
+
+export interface TopFeature {
+  feature: string
+  correlation: number
+}
+
+export interface ProblemDifficulty {
+  level: 'Easy' | 'Medium' | 'Hard'
+  score: number
+  baseline_accuracy: number
+  reasons: string[]
+}
+
+export interface SmartProfile {
+  overview: SmartOverview
+  column_type_summary: ColumnTypeSummary
+  target_candidates: TargetCandidate[]
+  recommended_target: string | null
+  task_recommendation: TaskRecommendation | null
+  resolved_task: string
+  target_distribution: TargetDistribution | null
+  imbalance_severity: ImbalanceSeverity
+  time_awareness: TimeAwareness
+  data_quality_warnings: DataQualityWarning[]
+  feature_preview: FeaturePreviewItem[]
+  top_features: TopFeature[]
+  problem_difficulty: ProblemDifficulty
+  feature_quality_scores: Record<string, FeatureQualityScore>
+  complexity_indicators: ComplexityIndicators
+  data_type_issues: DataTypeIssue[]
+}
+
+
 export type EvalStatus = 'champion' | 'challenger' | 'dropped'
 
 export interface LeaderboardEntry {
