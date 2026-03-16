@@ -271,12 +271,42 @@ export interface FeatureSelectionReport {
 // ── Training ─────────────────────────────────────────────────
 export type ModelStatus = 'pending' | 'running' | 'done' | 'failed' | 'pruned'
 
+export interface FoldScore {
+  fold: number
+  cv_score: number
+  train_score: number
+  gap: number
+}
+
+export interface PerClassMetric {
+  class: string
+  precision: number
+  recall: number
+  f1: number
+  support: number
+}
+
+export interface ThresholdPoint {
+  threshold: number
+  precision: number
+  recall: number
+  f1: number
+  fpr: number
+  tp: number
+  fp: number
+  fn: number
+  tn: number
+}
+
 export interface ModelCandidate {
   id: string
   model_name: string
   library: string
   hyperparams: Record<string, unknown>
   cv_score: number
+  cv_std?: number
+  cv_min?: number
+  cv_max?: number
   train_score: number
   val_score: number
   f1: number
@@ -285,6 +315,13 @@ export interface ModelCandidate {
   train_time_s: number
   status: ModelStatus
   progress: number
+  n_features?: number
+  fold_scores?: FoldScore[]
+  per_class_metrics?: PerClassMetric[]
+  threshold_analysis?: ThresholdPoint[]
+  strengths?: string[]
+  weaknesses?: string[]
+  error?: string
 }
 
 export interface TrainingJob {
