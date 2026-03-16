@@ -15,7 +15,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTip, ResponsiveContainer, Cell } from 'recharts'
 import SectionCard from '../../components/shared/SectionCard'
 import type { EDAReport } from '../../api/types'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePipelineStore } from '../../stores/pipeline'
 import PushPinIcon from '@mui/icons-material/PushPin'
@@ -48,6 +48,14 @@ export default function ModelReadiness({ report }: ModelReadinessProps) {
     return Object.fromEntries(report.mi_scores.map((f) => [f.feature, (saved[f.feature] as OverrideState) ?? 'auto']))
   })
 
+  // Sync when report.feature_overrides changes (e.g. after save invalidates the EDA query)
+  useEffect(() => {
+    const saved = report.feature_overrides ?? {}
+    setOverrides(Object.fromEntries(
+      report.mi_scores.map((f) => [f.feature, (saved[f.feature] as OverrideState) ?? 'auto'])
+    ))
+  }, [report.feature_overrides, report.mi_scores])
+
   const [snack, setSnack] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({ open: false, msg: '', severity: 'success' })
 
   const saveMutation = useMutation({
@@ -60,6 +68,8 @@ export default function ModelReadiness({ report }: ModelReadinessProps) {
       return r.json()
     }),
     onSuccess: () => {
+      // Invalidate EDA cache so report.feature_overrides refreshes from DB
+      queryClient.invalidateQueries({ queryKey: ['eda', datasetId] })
       // Clear selection cache so Phase 6 recomputes with new overrides
       queryClient.removeQueries({ queryKey: ['selection', datasetId] })
       setSnack({ open: true, msg: 'Feature overrides saved. Phase 6 Selection will apply them automatically.', severity: 'success' })

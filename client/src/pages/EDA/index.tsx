@@ -58,9 +58,20 @@ export default function EDAPage() {
     retry: false,
   })
 
+  // Fetch feature plan to know if high-cardinality / skewness issues are addressed
+  const { data: featureData } = useQuery<{ audit?: { output_cols: number } }>({
+    queryKey: ['features', datasetId],
+    queryFn: () => fetch(`/api/features?dataset_id=${datasetId}`).then((r) => r.ok ? r.json() : null),
+    enabled: !!datasetId,
+    retry: false,
+  })
+
   const addressedPhases: Record<string, string> = {}
   if (samplingData?.config?.strategy) {
     addressedPhases['sampling'] = `Strategy saved: ${samplingData.config.strategy.replace(/_/g, ' ')}`
+  }
+  if (featureData?.audit) {
+    addressedPhases['features'] = `Features applied: ${featureData.audit.output_cols} output columns`
   }
 
   if (!datasetId) {

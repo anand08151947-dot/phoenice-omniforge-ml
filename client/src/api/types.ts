@@ -230,6 +230,13 @@ export interface FeatureEngineeringPlan {
   specs: FeatureSpec[]
   total_features_in: number
   total_features_out: number
+  audit?: {
+    original_cols: number
+    output_cols: number
+    output_rows: number
+    feature_path: string
+    applied_at: string
+  }
 }
 
 // ── Feature Selection ─────────────────────────────────────────

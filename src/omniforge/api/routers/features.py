@@ -217,4 +217,17 @@ async def apply_features(body: FeaturesApplyRequest, db: AsyncSession = Depends(
     stats = await loop.run_in_executor(
         None, _apply_features_inline, body.dataset_id, minio_path, original_filename, body.specs, target_column
     )
+
+    # Persist audit back to feature_plan so UI can show it on page refresh
+    from sqlalchemy.orm.attributes import flag_modified as _fm
+    result2 = await db.execute(select(Dataset).where(Dataset.id == body.dataset_id))
+    ds2 = result2.scalar_one_or_none()
+    if ds2 and ds2.feature_plan:
+        import copy as _copy
+        fp = _copy.deepcopy(ds2.feature_plan)
+        fp["audit"] = {**stats, "applied_at": datetime.now(timezone.utc).isoformat()}
+        ds2.feature_plan = fp
+        _fm(ds2, "feature_plan")
+        await db.commit()
+
     return {"status": "applied", **stats}
