@@ -46,6 +46,14 @@ Thumbs.db
 # Node
 client/node_modules/
 client/dist/
+node_modules/
+tests/e2e/node_modules/
+
+# Playwright E2E artifacts (keep locally, not in repo)
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/.cache/
+**/playwright/.cache/
 
 # Large data files (use DVC or similar for versioning)
 data/*.csv

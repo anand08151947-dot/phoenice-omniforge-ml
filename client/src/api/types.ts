@@ -298,6 +298,43 @@ export interface ThresholdPoint {
   tn: number
 }
 
+export interface ConfusionMatrixData {
+  labels: string[]
+  values: number[][]
+  values_pct: number[][]
+}
+
+export interface ROCPoint {
+  fpr: number
+  tpr: number
+}
+
+export interface PRPoint {
+  recall: number
+  precision: number
+}
+
+export interface FeatureImportanceItem {
+  feature: string
+  importance: number
+}
+
+export interface LearningCurvePoint {
+  training_size: number
+  training_fraction: number
+  train_score: number
+  val_score: number
+  gap: number
+}
+
+export interface ModelComplexity {
+  n_estimators?: number
+  max_depth?: number
+  model_size_kb?: number
+  inference_ms_per_row?: number
+  batch_throughput_per_sec?: number
+}
+
 export interface ModelCandidate {
   id: string
   model_name: string
@@ -319,6 +356,12 @@ export interface ModelCandidate {
   fold_scores?: FoldScore[]
   per_class_metrics?: PerClassMetric[]
   threshold_analysis?: ThresholdPoint[]
+  confusion_matrix_data?: ConfusionMatrixData
+  roc_curve_data?: ROCPoint[]
+  pr_curve_data?: PRPoint[]
+  feature_importances?: FeatureImportanceItem[]
+  complexity?: ModelComplexity
+  learning_curve?: LearningCurvePoint[]
   strengths?: string[]
   weaknesses?: string[]
   error?: string
