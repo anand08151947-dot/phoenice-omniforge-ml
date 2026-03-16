@@ -7,7 +7,7 @@ import Switch from '@mui/material/Switch'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell, ReferenceLine } from 'recharts'
 import PageHeader from '../../components/shared/PageHeader'
@@ -22,6 +22,7 @@ export default function SelectionPage() {
   const navigate = useNavigate()
   const datasetId = usePipelineStore((s) => s.datasetId)
   const datasetName = usePipelineStore((s) => s.datasetName)
+  const setPhaseStatus = usePipelineStore((s) => s.setPhaseStatus)
   const [keepOverrides, setKeepOverrides] = useState<Record<string, boolean>>({})
   const [applying, setApplying] = useState(false)
 
@@ -34,6 +35,11 @@ export default function SelectionPage() {
     enabled: !!datasetId,
     retry: false,
   })
+
+  // Auto-set selection as done on load if data exists
+  useEffect(() => {
+    if (data) setPhaseStatus('selection', 'done')
+  }, [data, setPhaseStatus])
 
   if (!datasetId) {
     return (

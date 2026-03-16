@@ -9,7 +9,7 @@ import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
 import Tooltip from '@mui/material/Tooltip'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../../components/shared/PageHeader'
 import MetricCard from '../../components/shared/MetricCard'
@@ -67,6 +67,11 @@ export default function CleaningPage() {
     enabled: !!datasetId,
     retry: false,
   })
+
+  // Auto-set cleaning as done on load if audit exists in DB
+  useEffect(() => {
+    if (plan?.audit) setPhaseStatus('cleaning', 'done')
+  }, [plan?.audit, setPhaseStatus])
 
   if (!datasetId) {
     return (

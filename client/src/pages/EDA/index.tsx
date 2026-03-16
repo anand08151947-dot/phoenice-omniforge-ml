@@ -5,7 +5,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../../components/shared/PageHeader'
@@ -33,6 +33,7 @@ export default function EDAPage() {
   const navigate = useNavigate()
   const datasetId = usePipelineStore((s) => s.datasetId)
   const datasetName = usePipelineStore((s) => s.datasetName)
+  const setPhaseStatus = usePipelineStore((s) => s.setPhaseStatus)
 
   const { data: edaReport, isLoading: edaLoading, error: edaError } = useQuery<EDAReport>({
     queryKey: ['eda', datasetId],
@@ -73,6 +74,14 @@ export default function EDAPage() {
   if (featureData?.audit) {
     addressedPhases['features'] = `Features applied: ${featureData.audit.output_cols} output columns`
   }
+
+  // Sync sidebar phase statuses from backend data (survives page refresh)
+  useEffect(() => {
+    if (edaReport)       setPhaseStatus('eda', 'done')
+    if (profileData)     setPhaseStatus('profile', 'done')
+    if (samplingData?.config?.strategy) setPhaseStatus('sampling', 'done')
+    if (featureData?.audit)             setPhaseStatus('features', 'done')
+  }, [edaReport, profileData, samplingData, featureData, setPhaseStatus])
 
   if (!datasetId) {
     return (
