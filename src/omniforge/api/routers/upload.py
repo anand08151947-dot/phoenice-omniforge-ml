@@ -35,11 +35,44 @@ class DatasetOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DatasetPatch(BaseModel):
+    target_column: str | None = None
+    task_type: str | None = None
+
+
 @router.get("/datasets", response_model=list[DatasetOut])
 async def list_datasets(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Dataset).order_by(Dataset.created_at.desc()))
     datasets = result.scalars().all()
     return datasets
+
+
+@router.patch("/datasets/{dataset_id}", response_model=DatasetOut)
+async def patch_dataset(dataset_id: str, body: DatasetPatch, db: AsyncSession = Depends(get_db)):
+    """Update target_column and/or task_type for a dataset."""
+    from sqlalchemy import text as _text
+    from ...db.models.dataset import TaskType
+
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    if body.target_column is not None:
+        dataset.target_column = body.target_column
+    if body.task_type is not None:
+        try:
+            dataset.task_type = TaskType(body.task_type)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Invalid task_type: {body.task_type}")
+
+    # Clear cached EDA so it gets recomputed with new target
+    dataset.eda_report = None
+
+    dataset.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(dataset)
+    return dataset
 
 
 @router.post("/upload", response_model=DatasetOut, status_code=status.HTTP_201_CREATED)

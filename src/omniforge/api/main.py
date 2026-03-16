@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..core.config import settings
 from ..core.logging import setup_logging
-from .routers import upload, profile, pii
+from .routers import upload, profile, pii, eda, cleaning
 
 
 @asynccontextmanager
@@ -42,6 +42,8 @@ def create_app() -> FastAPI:
     app.include_router(upload.router, prefix="/api", tags=["datasets"])
     app.include_router(profile.router, prefix="/api", tags=["profile"])
     app.include_router(pii.router, prefix="/api", tags=["pii"])
+    app.include_router(eda.router, prefix="/api", tags=["eda"])
+    app.include_router(cleaning.router, prefix="/api", tags=["cleaning"])
 
     return app
 

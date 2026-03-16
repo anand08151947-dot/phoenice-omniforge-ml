@@ -28,6 +28,7 @@ dependencies = [
     # Phase 1
     "pandas>=2.2.0",
     "numpy>=2.0.0",
+    "scikit-learn>=1.5.0",
     "scipy>=1.13.0",
     "ydata-profiling>=4.9.0",
     # Sync DB driver for Celery

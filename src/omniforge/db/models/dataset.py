@@ -42,6 +42,8 @@ class Dataset(Base):
     target_column: Mapped[str] = mapped_column(String(255), nullable=True)
     profile_data: Mapped[dict] = mapped_column(JSON, nullable=True)
     pii_report: Mapped[dict] = mapped_column(JSON, nullable=True)
+    eda_report: Mapped[dict] = mapped_column(JSON, nullable=True)
+    cleaning_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

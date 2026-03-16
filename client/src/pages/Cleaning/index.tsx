@@ -3,41 +3,90 @@ import Grid from '@mui/material/Grid'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import LinearProgress from '@mui/material/LinearProgress'
+import Alert from '@mui/material/Alert'
+import Snackbar from '@mui/material/Snackbar'
 import Divider from '@mui/material/Divider'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import PageHeader from '../../components/shared/PageHeader'
 import MetricCard from '../../components/shared/MetricCard'
 import SectionCard from '../../components/shared/SectionCard'
 import CleaningRule from './CleaningRule'
 import type { CleaningPlan, CleaningStrategy } from '../../api/types'
+import { usePipelineStore } from '../../stores/pipeline'
 import CleaningServicesIcon from '@mui/icons-material/CleaningServices'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 
 export default function CleaningPage() {
+  const navigate = useNavigate()
+  const datasetId = usePipelineStore((s) => s.datasetId)
+  const datasetName = usePipelineStore((s) => s.datasetName)
+  const setPhaseStatus = usePipelineStore((s) => s.setPhaseStatus)
   const [strategies, setStrategies] = useState<Record<string, CleaningStrategy>>({})
   const [applying, setApplying] = useState(false)
-
-  const { data, isLoading } = useQuery<CleaningPlan>({
-    queryKey: ['cleaning'],
-    queryFn: () => fetch('/api/cleaning').then((r) => r.json()),
+  const [snack, setSnack] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({
+    open: false, msg: '', severity: 'success'
   })
+
+  const { data: plan, isLoading, error } = useQuery<CleaningPlan>({
+    queryKey: ['cleaning', datasetId],
+    queryFn: () => fetch(`/api/cleaning?dataset_id=${datasetId}`).then((r) => {
+      if (!r.ok) throw new Error(`Cleaning API returned ${r.status}`)
+      return r.json()
+    }),
+    enabled: !!datasetId,
+    retry: false,
+  })
+
+  if (!datasetId) {
+    return (
+      <Box>
+        <PageHeader title="Data Cleaning" subtitle="Phase 3 — Configure and apply remediation strategies" />
+        <Alert severity="info" action={<Button size="small" onClick={() => navigate('/upload')}>Upload Dataset</Button>}>
+          No dataset selected. Upload or select a dataset first.
+        </Alert>
+      </Box>
+    )
+  }
 
   if (isLoading) return <LinearProgress />
 
-  const plan = data!
+  if (error || !plan) {
+    return (
+      <Box>
+        <PageHeader title="Data Cleaning" subtitle={`Phase 3 — ${datasetName}`} />
+        <Alert severity="warning">
+          Cleaning plan not available. Ensure the dataset has been profiled first.
+        </Alert>
+      </Box>
+    )
+  }
 
   async function handleApply() {
     setApplying(true)
-    await fetch('/api/cleaning/apply', { method: 'POST', body: JSON.stringify({ strategies }) })
-    setApplying(false)
+    try {
+      const res = await fetch('/api/cleaning/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_id: datasetId, strategies }),
+      })
+      if (!res.ok) throw new Error(`Apply failed: ${res.status}`)
+      const result = await res.json()
+      setPhaseStatus('cleaning', 'done')
+      setSnack({ open: true, msg: `Cleaning applied! ${result.rows_removed ?? 0} rows removed, ${result.cols_removed ?? 0} columns dropped.`, severity: 'success' })
+    } catch (err: any) {
+      setSnack({ open: true, msg: `Error: ${err.message}`, severity: 'error' })
+    } finally {
+      setApplying(false)
+    }
   }
 
   return (
     <Box>
       <PageHeader
         title="Data Cleaning"
-        subtitle="Phase 3 — Configure and apply remediation strategies"
+        subtitle={`Phase 3 — ${datasetName}`}
         actions={
           <Button
             variant="contained"
@@ -83,10 +132,22 @@ export default function CleaningPage() {
         <Box sx={{ mt: 2 }}>
           <LinearProgress />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-            Applying cleaning rules…
+            Applying cleaning rules and writing cleaned dataset to storage…
           </Typography>
         </Box>
       )}
+
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={6000}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={snack.severity} onClose={() => setSnack((s) => ({ ...s, open: false }))}>
+          {snack.msg}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }
+

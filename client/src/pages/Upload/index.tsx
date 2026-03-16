@@ -6,12 +6,16 @@ import Chip from '@mui/material/Chip'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import LinearProgress from '@mui/material/LinearProgress'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
 import { useDropzone } from 'react-dropzone'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../../components/shared/PageHeader'
-import type { Dataset } from '../../api/types'
+import type { Dataset, DatasetProfile } from '../../api/types'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import StorageIcon from '@mui/icons-material/Storage'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
@@ -19,6 +23,60 @@ import { usePipelineStore } from '../../stores/pipeline'
 
 function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function TargetColumnSelector({ dataset, onSaved }: { dataset: Dataset; onSaved: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const { data: profile } = useQuery<DatasetProfile>({
+    queryKey: ['profile', dataset.id],
+    queryFn: () => fetch(`/api/profile?dataset_id=${dataset.id}`).then((r) => r.json()),
+    enabled: dataset.status === 'ready',
+  })
+  const columns = profile?.columns?.map((c) => c.name) ?? []
+
+  async function handleChange(col: string, taskType: string) {
+    setLoading(true)
+    await fetch(`/api/datasets/${dataset.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_column: col, task_type: taskType }),
+    })
+    setLoading(false)
+    onSaved()
+  }
+
+  if (!columns.length) return null
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+      <FormControl size="small" sx={{ minWidth: 140 }}>
+        <InputLabel>Target Column</InputLabel>
+        <Select
+          label="Target Column"
+          value={dataset.target_column ?? ''}
+          disabled={loading}
+          onChange={(e) => handleChange(e.target.value, dataset.task_type ?? 'classification')}
+        >
+          {columns.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+        </Select>
+      </FormControl>
+      {dataset.target_column && (
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel>Task</InputLabel>
+          <Select
+            label="Task"
+            value={dataset.task_type ?? 'classification'}
+            disabled={loading}
+            onChange={(e) => handleChange(dataset.target_column!, e.target.value)}
+          >
+            <MenuItem value="classification">Classification</MenuItem>
+            <MenuItem value="regression">Regression</MenuItem>
+            <MenuItem value="clustering">Clustering</MenuItem>
+          </Select>
+        </FormControl>
+      )}
+    </Box>
+  )
 }
 
 export default function UploadPage() {
@@ -33,7 +91,6 @@ export default function UploadPage() {
     queryKey: ['datasets'],
     queryFn: () => fetch('/api/datasets').then((r) => r.json()),
     refetchInterval: (query) => {
-      // Keep polling while any dataset is still processing
       const ds = query.state.data as Dataset[] | undefined
       return ds?.some((d) => d.status === 'processing') ? 3000 : false
     },
@@ -137,6 +194,12 @@ export default function UploadPage() {
                     )}
                   </Box>
                 </Box>
+                {ds.status === 'ready' && (
+                  <TargetColumnSelector
+                    dataset={ds}
+                    onSaved={() => queryClient.invalidateQueries({ queryKey: ['datasets'] })}
+                  />
+                )}
               </CardContent>
             </Card>
           </Grid>
