@@ -19,6 +19,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
+import TuneIcon from '@mui/icons-material/Tune'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import PageHeader from '../../components/shared/PageHeader'
@@ -26,6 +27,7 @@ import SectionCard from '../../components/shared/SectionCard'
 import { usePipelineStore } from '../../stores/pipeline'
 import type { ModelCandidate } from '../../api/types'
 import ModelDetailPanel from './ModelDetailPanel'
+import ModelTuningPanel from './ModelTuningPanel'
 
 interface LeakageWarning {
   feature: string
@@ -86,6 +88,7 @@ export default function TrainingPage() {
   const queryClient = useQueryClient()
   const [running, setRunning] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [tuningCandidate, setTuningCandidate] = useState<ModelCandidate | null>(null)
 
   const { data, isLoading, error } = useQuery<TrainingResults>({
     queryKey: ['training', datasetId],
@@ -328,15 +331,27 @@ export default function TrainingPage() {
                           </TableCell>
                           <TableCell>
                             {c.status === 'done' && (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                onClick={() => toggleExpand(c.id)}
-                                sx={{ fontSize: '0.7rem', py: 0.25, px: 1 }}
-                              >
-                                {isExpanded ? 'Hide' : 'Details'}
-                              </Button>
+                              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                                  onClick={() => toggleExpand(c.id)}
+                                  sx={{ fontSize: '0.7rem', py: 0.25, px: 1 }}
+                                >
+                                  {isExpanded ? 'Hide' : 'Details'}
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="secondary"
+                                  startIcon={<TuneIcon />}
+                                  onClick={() => setTuningCandidate(c)}
+                                  sx={{ fontSize: '0.7rem', py: 0.25, px: 1 }}
+                                >
+                                  Tune
+                                </Button>
+                              </Box>
                             )}
                           </TableCell>
                         </TableRow>
@@ -357,6 +372,16 @@ export default function TrainingPage() {
             </TableContainer>
           </SectionCard>
         </>
+      )}
+
+      {/* Model Tuning Drawer */}
+      {tuningCandidate && datasetId && (
+        <ModelTuningPanel
+          open={!!tuningCandidate}
+          onClose={() => setTuningCandidate(null)}
+          candidate={tuningCandidate}
+          datasetId={datasetId}
+        />
       )}
     </Box>
   )

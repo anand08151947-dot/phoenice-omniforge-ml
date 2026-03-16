@@ -591,3 +591,276 @@ def run_training(
         "best_model": candidates[0]["model_name"] if candidates else None,
         "best_cv_score": candidates[0]["cv_score"] if candidates else 0.0,
     }
+
+
+# ─── fix-overfit remediation params ──────────────────────────────────────────
+
+FIX_OVERFIT_PARAMS: dict[str, dict] = {
+    "Random Forest": {
+        "n_estimators": 200,
+        "max_depth": 8,
+        "min_samples_leaf": 10,
+        "min_samples_split": 20,
+        "max_features": "sqrt",
+    },
+    "XGBoost": {
+        "n_estimators": 200,
+        "max_depth": 4,
+        "learning_rate": 0.05,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+    },
+    "LightGBM": {
+        "n_estimators": 200,
+        "num_leaves": 31,
+        "learning_rate": 0.05,
+        "min_child_samples": 30,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 0.1,
+    },
+    "Logistic Regression": {
+        "C": 0.1,
+        "max_iter": 1000,
+        "solver": "lbfgs",
+    },
+}
+
+HYPERPARAMETER_SEARCH_SPACES: dict[str, list[dict]] = {
+    "Random Forest": [
+        {"name": "n_estimators", "type": "int", "min": 50, "max": 500, "step": 50, "default": 200},
+        {"name": "max_depth", "type": "int", "min": 2, "max": 20, "step": 1, "default": 8, "nullable": True},
+        {"name": "min_samples_leaf", "type": "int", "min": 1, "max": 50, "step": 1, "default": 10},
+        {"name": "min_samples_split", "type": "int", "min": 2, "max": 50, "step": 2, "default": 20},
+        {"name": "max_features", "type": "choice", "choices": ["sqrt", "log2", "None"], "default": "sqrt"},
+    ],
+    "XGBoost": [
+        {"name": "n_estimators", "type": "int", "min": 50, "max": 500, "step": 50, "default": 200},
+        {"name": "max_depth", "type": "int", "min": 2, "max": 12, "step": 1, "default": 4},
+        {"name": "learning_rate", "type": "float", "min": 0.01, "max": 0.3, "step": 0.01, "default": 0.05},
+        {"name": "subsample", "type": "float", "min": 0.5, "max": 1.0, "step": 0.05, "default": 0.8},
+        {"name": "colsample_bytree", "type": "float", "min": 0.5, "max": 1.0, "step": 0.05, "default": 0.8},
+        {"name": "reg_alpha", "type": "float", "min": 0.0, "max": 2.0, "step": 0.05, "default": 0.1},
+        {"name": "reg_lambda", "type": "float", "min": 0.0, "max": 2.0, "step": 0.05, "default": 1.0},
+    ],
+    "LightGBM": [
+        {"name": "n_estimators", "type": "int", "min": 50, "max": 500, "step": 50, "default": 200},
+        {"name": "num_leaves", "type": "int", "min": 10, "max": 127, "step": 5, "default": 31},
+        {"name": "learning_rate", "type": "float", "min": 0.01, "max": 0.3, "step": 0.01, "default": 0.05},
+        {"name": "min_child_samples", "type": "int", "min": 5, "max": 100, "step": 5, "default": 30},
+        {"name": "subsample", "type": "float", "min": 0.5, "max": 1.0, "step": 0.05, "default": 0.8},
+        {"name": "reg_alpha", "type": "float", "min": 0.0, "max": 2.0, "step": 0.1, "default": 0.1},
+        {"name": "reg_lambda", "type": "float", "min": 0.0, "max": 2.0, "step": 0.1, "default": 0.1},
+    ],
+    "Logistic Regression": [
+        {"name": "C", "type": "float", "min": 0.001, "max": 10.0, "step": 0.05, "default": 1.0},
+        {"name": "max_iter", "type": "int", "min": 100, "max": 2000, "step": 100, "default": 1000},
+    ],
+    "Ridge Regression": [
+        {"name": "alpha", "type": "float", "min": 0.001, "max": 10.0, "step": 0.1, "default": 1.0},
+    ],
+}
+
+
+def get_hyperparameter_space(model_name: str) -> list[dict]:
+    return HYPERPARAMETER_SEARCH_SPACES.get(model_name, [])
+
+
+def get_fix_overfit_params(model_name: str) -> dict:
+    return FIX_OVERFIT_PARAMS.get(model_name, {})
+
+
+def _build_model_from_params(model_name: str, hyperparams: dict,
+                               task_type: str, strategy: str):
+    """Instantiate a model by name with given hyperparameters."""
+    cw = "balanced" if strategy == "class_weights" else None
+    is_clf = task_type in ("classification", "anomaly_detection")
+
+    # Sanitise: remove None-valued keys; handle "None" string for max_features
+    clean = {}
+    for k, v in hyperparams.items():
+        if v == "None":
+            clean[k] = None
+        elif v is not None:
+            clean[k] = v
+
+    if model_name == "Random Forest":
+        cls = RandomForestClassifier if is_clf else RandomForestRegressor
+        base = {"random_state": 42, "n_jobs": -1}
+        if is_clf:
+            base["class_weight"] = cw
+        return cls(**{**base, **clean})
+
+    if model_name == "XGBoost":
+        try:
+            import xgboost as xgb
+            cls = xgb.XGBClassifier if is_clf else xgb.XGBRegressor
+            base = {"random_state": 42, "n_jobs": -1, "verbosity": 0}
+            if is_clf:
+                base["eval_metric"] = "logloss"
+            return cls(**{**base, **clean})
+        except ImportError:
+            from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+            return (GradientBoostingClassifier if is_clf else GradientBoostingRegressor)(n_estimators=100, random_state=42)
+
+    if model_name == "LightGBM":
+        try:
+            import lightgbm as lgb
+            cls = lgb.LGBMClassifier if is_clf else lgb.LGBMRegressor
+            base = {"random_state": 42, "n_jobs": -1, "verbose": -1}
+            if is_clf:
+                base["class_weight"] = cw
+            return cls(**{**base, **clean})
+        except ImportError:
+            from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+            return (GradientBoostingClassifier if is_clf else GradientBoostingRegressor)(n_estimators=100, random_state=42)
+
+    if model_name == "Logistic Regression":
+        return LogisticRegression(class_weight=cw, random_state=42, n_jobs=-1, **clean)
+
+    if model_name == "Ridge Regression":
+        return Ridge(**clean)
+
+    raise ValueError(f"Unknown model: {model_name}")
+
+
+def retrain_single_model(
+    model_name: str,
+    model_id: str,
+    hyperparams: dict,
+    df: pd.DataFrame,
+    target_column: str,
+    task_type: str,
+    selection_plan: dict | None,
+    sampling_config: dict | None,
+) -> dict:
+    """Retrain one model with custom hyperparams and return updated candidate dict."""
+    strategy = (sampling_config or {}).get("config", {}).get("strategy", "none")
+    is_classifier = task_type in ("classification", "anomaly_detection")
+
+    if selection_plan and selection_plan.get("importances"):
+        feature_cols = _get_selected_features(selection_plan)
+    else:
+        feature_cols = [c for c in df.columns if c != target_column]
+    feature_cols = [f for f in feature_cols if f in df.columns and f != target_column]
+
+    X, y = _preprocess(df, feature_cols, target_column)
+    model = _build_model_from_params(model_name, hyperparams, task_type, strategy)
+
+    n_splits = 5
+    cv_splitter = (
+        StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        if is_classifier else KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    )
+
+    t0 = time.time()
+    diag = _train_model_cv(model, X, y, cv_splitter, is_classifier, feature_cols)
+    result: dict[str, Any] = {
+        "id": model_id,
+        "model_name": model_name,
+        "library": _model_library(model_name),
+        "status": "done",
+        "progress": 100,
+        "hyperparams": _extract_params(model),
+        "n_features": len(feature_cols),
+        **diag,
+    }
+    result["train_time_s"] = round(time.time() - t0, 2)
+    result.update(_generate_sw(result, is_classifier))
+    return result
+
+
+def autotune_model(
+    model_name: str,
+    model_id: str,
+    df: pd.DataFrame,
+    target_column: str,
+    task_type: str,
+    selection_plan: dict | None,
+    sampling_config: dict | None,
+    n_trials: int = 30,
+) -> dict:
+    """Run Optuna HPO for one model, return best retrained candidate dict."""
+    try:
+        import optuna
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+    except ImportError:
+        raise ValueError("Optuna is not installed. Run: pip install optuna")
+
+    strategy = (sampling_config or {}).get("config", {}).get("strategy", "none")
+    is_classifier = task_type in ("classification", "anomaly_detection")
+
+    if selection_plan and selection_plan.get("importances"):
+        feature_cols = _get_selected_features(selection_plan)
+    else:
+        feature_cols = [c for c in df.columns if c != target_column]
+    feature_cols = [f for f in feature_cols if f in df.columns and f != target_column]
+
+    X, y = _preprocess(df, feature_cols, target_column)
+    cv_splitter = (
+        StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        if is_classifier else KFold(n_splits=5, shuffle=True, random_state=42)
+    )
+    space = HYPERPARAMETER_SEARCH_SPACES.get(model_name, [])
+
+    def objective(trial: "optuna.Trial") -> float:
+        params = {}
+        for p in space:
+            if p["type"] == "int":
+                params[p["name"]] = trial.suggest_int(p["name"], p["min"], p["max"], step=p.get("step", 1))
+            elif p["type"] == "float":
+                params[p["name"]] = trial.suggest_float(p["name"], p["min"], p["max"], step=p.get("step"))
+            elif p["type"] == "choice":
+                params[p["name"]] = trial.suggest_categorical(p["name"], p["choices"])
+
+        try:
+            model = _build_model_from_params(model_name, params, task_type, strategy)
+        except Exception:
+            return 0.0
+
+        scores = []
+        for train_idx, val_idx in cv_splitter.split(X, y if is_classifier else None):
+            m = clone(model)
+            m.fit(X[train_idx], y[train_idx])
+            y_pred = m.predict(X[val_idx])
+            if is_classifier:
+                scores.append(float(accuracy_score(y[val_idx], y_pred)))
+            else:
+                scores.append(max(float(r2_score(y[val_idx], y_pred)), 0.0))
+        return float(np.mean(scores))
+
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+
+    best_params = study.best_params
+    best_score = round(study.best_value, 4)
+
+    # Full retrain with best params to get all diagnostics
+    result = retrain_single_model(
+        model_name=model_name,
+        model_id=model_id,
+        hyperparams=best_params,
+        df=df,
+        target_column=target_column,
+        task_type=task_type,
+        selection_plan=selection_plan,
+        sampling_config=sampling_config,
+    )
+    result["optuna_best_score"] = best_score
+    result["optuna_n_trials"] = n_trials
+    result["optuna_best_params"] = best_params
+    return result
+
+
+def _model_library(model_name: str) -> str:
+    mapping = {
+        "LightGBM": "lightgbm",
+        "XGBoost": "xgboost",
+        "Random Forest": "sklearn",
+        "Logistic Regression": "sklearn",
+        "Ridge Regression": "sklearn",
+    }
+    return mapping.get(model_name, "sklearn")

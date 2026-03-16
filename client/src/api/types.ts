@@ -365,6 +365,47 @@ export interface ModelCandidate {
   strengths?: string[]
   weaknesses?: string[]
   error?: string
+  optuna_best_score?: number
+  optuna_n_trials?: number
+  optuna_best_params?: Record<string, unknown>
+}
+
+export interface TrainingResults {
+  dataset_id: string
+  candidates: ModelCandidate[]
+  best_model?: string
+  best_cv_score?: number
+}
+
+export interface HyperparamDef {
+  name: string
+  type: 'int' | 'float' | 'choice'
+  min?: number
+  max?: number
+  step?: number
+  default?: number | string
+  choices?: string[]
+  nullable?: boolean
+}
+
+export interface HyperparamSpaceResponse {
+  model_name: string
+  space: HyperparamDef[]
+  fix_overfit_params: Record<string, unknown>
+}
+
+export interface RetrainSingleRequest {
+  dataset_id: string
+  model_id: string
+  model_name: string
+  hyperparams: Record<string, unknown>
+}
+
+export interface AutotuneRequest {
+  dataset_id: string
+  model_id: string
+  model_name: string
+  n_trials: number
 }
 
 export interface TrainingJob {
