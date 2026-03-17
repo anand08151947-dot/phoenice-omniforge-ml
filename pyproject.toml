@@ -47,6 +47,8 @@ dependencies = [
     "catboost>=1.2.0",
     # Time series forecasting
     "statsmodels>=0.14.0",
+    # Pipeline scheduling
+    "apscheduler>=3.10.0",
 ]
 
 [project.optional-dependencies]

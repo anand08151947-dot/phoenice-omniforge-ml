@@ -11,6 +11,8 @@ from omniforge.db.base import Base
 import omniforge.db.models.dataset  # noqa: F401
 import omniforge.db.models.job  # noqa: F401
 import omniforge.db.models.project  # noqa: F401  (Project + AuditLog)
+import omniforge.db.models.prediction_log  # noqa: F401  (PredictionLog)
+import omniforge.db.models.pipeline  # noqa: F401  (PipelineSchedule, PipelineRun)
 from omniforge.db.session import get_db
 
 test_engine = create_async_engine(

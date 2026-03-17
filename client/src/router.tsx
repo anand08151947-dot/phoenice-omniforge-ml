@@ -33,6 +33,8 @@ const EvaluationPage = lazy(() => import('./pages/Evaluation'))
 const ExplainPage = lazy(() => import('./pages/Explain'))
 const DeployPage = lazy(() => import('./pages/Deploy'))
 const ChatPage = lazy(() => import('./pages/Chat'))
+const PipelinePage = lazy(() => import('./pages/Pipeline'))
+const ActiveLearningPage = lazy(() => import('./pages/ActiveLearning'))
 
 function Fallback() {
   return <LinearProgress />
@@ -64,6 +66,8 @@ export const router = createBrowserRouter([
       { path: 'explain', element: <Wrap component={ExplainPage} /> },
       { path: 'deploy', element: <Wrap component={DeployPage} /> },
       { path: 'chat', element: <Wrap component={ChatPage} /> },
+      { path: 'pipeline', element: <Wrap component={PipelinePage} /> },
+      { path: 'active-learning', element: <Wrap component={ActiveLearningPage} /> },
     ],
   },
 ])

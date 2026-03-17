@@ -15,9 +15,12 @@ import FormLabel from '@mui/material/FormLabel'
 import Slider from '@mui/material/Slider'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
+import Divider from '@mui/material/Divider'
 import { useState } from 'react'
 import PageHeader from '../../components/shared/PageHeader'
 import MonitoringPanel from './MonitoringPanel'
+import ApprovalPanel from './ApprovalPanel'
+import DriftPanel from './DriftPanel'
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch'
 import { usePipelineStore } from '../../stores/pipeline'
 
@@ -124,6 +127,15 @@ export default function DeployPage() {
           </StepContent>
         </Step>
       </Stepper>
+
+      <Divider sx={{ my: 3 }} />
+      <ApprovalPanel />
+
+      {deploymentId && (
+        <Box sx={{ mt: 3 }}>
+          <DriftPanel deploymentId={deploymentId} />
+        </Box>
+      )}
     </Box>
   )
 }

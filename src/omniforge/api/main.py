@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..core.config import settings
 from ..core.logging import setup_logging
-from .routers import upload, profile, pii, eda, cleaning, sampling, features, selection, training, evaluation, session, explain, deploy, chat, projects
+from .routers import upload, profile, pii, eda, cleaning, sampling, features, selection, training, evaluation, session, explain, deploy, chat, projects, pipeline, active_learning
+from .scheduler import scheduler
 
 
 @asynccontextmanager
@@ -21,7 +22,27 @@ async def lifespan(app: FastAPI):
                 client.make_bucket(bucket)
     except Exception:
         pass  # MinIO may not be available during tests/dev boot
+
+    # Start APScheduler and load enabled pipeline schedules
+    scheduler.start()
+    try:
+        from sqlalchemy import select
+        from ..db.session import AsyncSessionLocal
+        from ..db.models.pipeline import PipelineSchedule
+        from .routers.pipeline import _add_schedule_job
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(PipelineSchedule).where(PipelineSchedule.enabled == True)  # noqa: E712
+            )
+            for sched in result.scalars().all():
+                _add_schedule_job(sched)
+    except Exception:
+        pass  # DB may not be available during tests/dev boot
+
     yield
+
+    scheduler.shutdown(wait=False)
 
 
 def create_app() -> FastAPI:
@@ -54,6 +75,8 @@ def create_app() -> FastAPI:
     app.include_router(deploy.router, prefix="/api", tags=["deploy"])
     app.include_router(chat.router, prefix="/api", tags=["chat"])
     app.include_router(projects.router, prefix="/api", tags=["projects"])
+    app.include_router(pipeline.router, prefix="/api/pipeline", tags=["pipeline"])
+    app.include_router(active_learning.router, prefix="/api/active-learning", tags=["active-learning"])
 
     return app
 

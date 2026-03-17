@@ -27,6 +27,8 @@ import LeaderboardIcon from '@mui/icons-material/Leaderboard'
 import PsychologyIcon from '@mui/icons-material/Psychology'
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch'
 import ChatIcon from '@mui/icons-material/Chat'
+import ScheduleIcon from '@mui/icons-material/Schedule'
+import PsychologyAltIcon from '@mui/icons-material/PsychologyAlt'
 
 interface Step {
   label: string
@@ -49,6 +51,8 @@ const steps: Step[] = [
   { label: 'Explain', path: '/explain', phase: 'explain', icon: <PsychologyIcon fontSize="small" /> },
   { label: 'Deploy', path: '/deploy', phase: 'deploy', icon: <RocketLaunchIcon fontSize="small" /> },
   { label: 'Chat', path: '/chat', phase: 'chat', icon: <ChatIcon fontSize="small" /> },
+  { label: 'Pipeline', path: '/pipeline', phase: 'pipeline', icon: <ScheduleIcon fontSize="small" /> },
+  { label: 'Active Learning', path: '/active-learning', phase: 'active_learning', icon: <PsychologyAltIcon fontSize="small" /> },
 ]
 
 interface SidebarProps {
