@@ -39,6 +39,14 @@ dependencies = [
     # Excel and Parquet file support
     "openpyxl>=3.1.0",
     "pyarrow>=15.0.0",
+    # XAI / Explainability
+    "shap>=0.44.0",
+    # Gradient boosting models
+    "xgboost>=2.0.0",
+    "lightgbm>=4.0.0",
+    "catboost>=1.2.0",
+    # Time series forecasting
+    "statsmodels>=0.14.0",
 ]
 
 [project.optional-dependencies]
