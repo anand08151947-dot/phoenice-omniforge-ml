@@ -43,7 +43,7 @@ export default function ThresholdSlider({ data, optimalThreshold = 0.5 }: Props)
             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
             <XAxis dataKey="threshold" tickFormatter={(v) => v.toFixed(2)} label={{ value: 'Threshold', position: 'insideBottomRight', offset: -5, fontSize: 11 }} />
             <YAxis domain={[0, 1]} tickFormatter={(v) => v.toFixed(1)} />
-            <Tooltip formatter={(v: number) => v.toFixed(4)} labelFormatter={(l) => `Threshold: ${Number(l).toFixed(2)}`} />
+            <Tooltip formatter={(v: any) => v.toFixed(4)} labelFormatter={(l) => `Threshold: ${Number(l).toFixed(2)}`} />
             <ReferenceLine x={threshold} stroke="#fff" strokeDasharray="4 2" strokeWidth={1.5} />
             <ReferenceLine x={optimalThreshold} stroke="#ffd700" strokeDasharray="6 3" label={{ value: 'Optimal', position: 'top', fontSize: 9, fill: '#ffd700' }} />
             <Line type="monotone" dataKey="f1" stroke="#6C63FF" strokeWidth={2} dot={false} name="F1" />

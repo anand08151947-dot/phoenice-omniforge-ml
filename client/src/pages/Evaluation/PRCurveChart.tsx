@@ -57,7 +57,7 @@ export default function PRCurveChart({ data, prevalence, auc, isROC = false }: P
               tickFormatter={(v) => v.toFixed(1)}
               label={{ value: yLabel, angle: -90, position: 'insideLeft', fontSize: 11 }}
             />
-            <Tooltip formatter={(v: number) => v.toFixed(4)} />
+            <Tooltip formatter={(v: any) => v.toFixed(4)} />
             <Legend verticalAlign="top" height={24} />
             {isROC && (
               <ReferenceLine

@@ -40,7 +40,7 @@ export default function LearningCurveChart({ data }: Props) {
             />
             <YAxis domain={['auto', 1]} tickFormatter={(v) => v.toFixed(2)} />
             <Tooltip
-              formatter={(v: number, name: string) => [v.toFixed(4), name]}
+              formatter={(v: any, name: any) => [v.toFixed(4), name]}
               labelFormatter={(l) => `Training size: ${Number(l).toLocaleString()}`}
             />
             <Legend verticalAlign="top" height={24} />

@@ -204,7 +204,7 @@ export default function CleaningPage() {
                   {Object.entries(audit.applied_strategies).map(([actionId, strategy]) => (
                     <Tooltip key={actionId} title={`Rule: ${actionId}`} placement="top" arrow>
                       <Chip
-                        label={`${actionId.split('_').slice(0, 2).join(' ')} → ${strategy.replace(/_/g, ' ')}`}
+                        label={`${actionId.split('_').slice(0, 2).join(' ')} → ${(strategy as string).replace(/_/g, ' ')}`}
                         size="small"
                         variant="outlined"
                         color="info"

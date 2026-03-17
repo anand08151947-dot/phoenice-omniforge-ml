@@ -52,7 +52,7 @@ function ROCChart({ roc, auc, modelName }: ROCProps) {
             label={{ value: 'True Positive Rate', angle: -90, position: 'insideLeft', fontSize: 10 }}
           />
           <RechartTooltip
-            formatter={(val: number, name: string) => [`${(val * 100).toFixed(1)}%`, name]}
+            formatter={(val: any, name: any) => [`${(val * 100).toFixed(1)}%`, name]}
           />
           {/* Diagonal baseline (random classifier) */}
           <Line
@@ -102,7 +102,7 @@ function PRChart({ pr, modelName }: PRProps) {
             label={{ value: 'Precision', angle: -90, position: 'insideLeft', fontSize: 10 }}
           />
           <RechartTooltip
-            formatter={(val: number, name: string) => [`${(val * 100).toFixed(1)}%`, name]}
+            formatter={(val: any, name: any) => [`${(val * 100).toFixed(1)}%`, name]}
           />
           <Line
             type="monotone"

@@ -120,7 +120,7 @@ export default function DeployPage() {
             <Alert severity="success" sx={{ mb: 2 }}>
               ✅ Model deployed successfully! Endpoint: <code>https://api.omniforge.ai/v1/models/lgbm-churn-v1/predict</code>
             </Alert>
-            <MonitoringPanel deploymentId={deploymentId} datasetId={datasetId} />
+            <MonitoringPanel deploymentId={deploymentId} datasetId={datasetId ?? undefined} />
           </StepContent>
         </Step>
       </Stepper>

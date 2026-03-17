@@ -16,6 +16,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTip, Res
 import SectionCard from '../../components/shared/SectionCard'
 import type { EDAReport } from '../../api/types'
 import { useState, useEffect } from 'react'
+import type React from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePipelineStore } from '../../stores/pipeline'
 import PushPinIcon from '@mui/icons-material/PushPin'
@@ -189,7 +190,7 @@ export default function ModelReadiness({ report }: ModelReadinessProps) {
                       <TableCell align="center">
                         <Tooltip title={cfg.tip} placement="left" arrow>
                           <Chip
-                            icon={cfg.icon}
+                            icon={cfg.icon as React.ReactElement}
                             label={cfg.label}
                             size="small"
                             color={cfg.color}

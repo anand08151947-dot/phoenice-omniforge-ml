@@ -45,7 +45,7 @@ export default function PredictionDistributionChart({ data, optimalThreshold }: 
             <YAxis label={{ value: 'Count', angle: -90, position: 'insideLeft', fontSize: 11 }} />
             <Tooltip
               labelFormatter={(l) => `Score ≈ ${Number(l).toFixed(2)}`}
-              formatter={(v: number, name: string) => [v.toLocaleString(), name]}
+              formatter={(v: any, name: any) => [v.toLocaleString(), name]}
             />
             <Legend verticalAlign="top" height={24} />
             <Bar dataKey="count_negative" name="Negative class" fill="#f44336" opacity={0.75} stackId="a" />

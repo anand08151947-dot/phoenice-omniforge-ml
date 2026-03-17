@@ -44,7 +44,7 @@ function formatBytes(bytes: number) {
 function SmartSetupPanel({ dataset, onSaved }: { dataset: Dataset; onSaved: () => void }) {
   const [saving, setSaving] = useState(false)
   const [targetCol, setTargetCol] = useState(dataset.target_column ?? '')
-  const [taskType, setTaskType] = useState(dataset.task_type ?? 'classification')
+  const [taskType, setTaskType] = useState<string>(dataset.task_type ?? 'classification')
   const [timeOption, setTimeOption] = useState('time_aware')
 
   // Load basic profile for column list fallback
@@ -358,7 +358,7 @@ export default function UploadPage() {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
                       <Chip label={ds.status} color={ds.status === 'ready' ? 'success' : 'warning'} size="small" />
                       {ds.target_column && <Chip label={`→ ${ds.target_column}`} size="small" color="primary" variant="outlined" />}
-                      {ds.task_type && ds.task_type !== 'unknown' && <Chip label={ds.task_type} size="small" variant="outlined" />}
+                      {ds.task_type && (ds.task_type as string) !== 'unknown' && <Chip label={ds.task_type} size="small" variant="outlined" />}
                       {ds.status === 'ready' && (
                         <Button size="small" endIcon={<ArrowForwardIcon />} onClick={() => useDataset(ds)}>
                           Use

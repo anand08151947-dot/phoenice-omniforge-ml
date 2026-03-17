@@ -19,7 +19,7 @@ interface FeatureRowProps {
 const transforms: TransformType[] = [
   'none', 'log', 'sqrt', 'standard_scale', 'min_max_scale',
   'one_hot_encode', 'label_encode', 'target_encode',
-  'bin', 'polynomial', 'interaction', 'date_parts', 'tfidf',
+  'bin', 'polynomial', 'interaction', 'date_parts', 'tfidf', 'embedding',
 ]
 
 const TRANSFORM_HELP: Record<TransformType, string> = {
@@ -36,6 +36,7 @@ const TRANSFORM_HELP: Record<TransformType, string> = {
   interaction:     'Multiplies two columns together (x × y). Captures combined effect not visible individually.',
   date_parts:      'Extracts year, month, day, day-of-week from a datetime column. Makes temporal patterns learnable.',
   tfidf:           'TF-IDF vectorisation for free-text columns. Converts text to numeric importance scores per word.',
+  embedding:       'Text Embedding — converts text to dense vector representations using a pre-trained model.',
 }
 
 const dtypeColor: Record<string, string> = { float64: '#6C63FF', int64: '#4CAF50', object: '#FF6584' }

@@ -59,7 +59,7 @@ export default function LearningCurveChart({ data, modelName, metric = 'Accuracy
             label={{ value: metric, angle: -90, position: 'insideLeft', fontSize: 10 }}
           />
           <RechartTooltip
-            formatter={(val: number, name: string) => [`${val.toFixed(1)}%`, name]}
+            formatter={(val: any, name: any) => [`${val.toFixed(1)}%`, name]}
             labelFormatter={(label) => `Training size: ${label}`}
           />
           <Legend wrapperStyle={{ fontSize: '11px' }} />

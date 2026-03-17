@@ -68,7 +68,7 @@ export default function FeatureImportanceChart({
             width={130}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="importance" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, formatter: (v: number) => `${v.toFixed(1)}%` }}>
+          <Bar dataKey="importance" radius={[0, 3, 3, 0]} label={{ position: 'right', fontSize: 10, formatter: (v: any) => `${v.toFixed(1)}%` }}>
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}

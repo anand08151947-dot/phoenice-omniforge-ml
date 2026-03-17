@@ -51,7 +51,7 @@ export default function CalibrationChart({ data }: Props) {
               tickFormatter={(v) => v.toFixed(1)}
               label={{ value: 'Fraction of positives', angle: -90, position: 'insideLeft', fontSize: 11 }}
             />
-            <Tooltip formatter={(v: number) => v.toFixed(4)} />
+            <Tooltip formatter={(v: any) => v.toFixed(4)} />
             {/* Perfect calibration diagonal */}
             <Line type="monotone" dataKey="perfect" stroke="#555" strokeWidth={1} strokeDasharray="5 5" dot={false} name="Perfect" />
             {/* Actual calibration */}
