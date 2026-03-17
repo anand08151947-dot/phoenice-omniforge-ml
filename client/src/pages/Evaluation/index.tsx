@@ -5,6 +5,9 @@ import Typography from '@mui/material/Typography'
 import LinearProgress from '@mui/material/LinearProgress'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
+import Tabs from '@mui/material/Tabs'
+import Tab from '@mui/material/Tab'
+import Chip from '@mui/material/Chip'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
@@ -21,11 +24,14 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { useEffect, useMemo, useState } from 'react'
 
-interface EvalReportExtended extends EvaluationReport {
-  champion_model_name?: string
-  overfit_warnings?: string[]
-  sampling_strategy?: string
-}
+import PRCurveChart from './PRCurveChart'
+import PerClassMetricsTable from './PerClassMetricsTable'
+import ThresholdSlider from './ThresholdSlider'
+import LearningCurveChart from './LearningCurveChart'
+import CalibrationChart from './CalibrationChart'
+import PredictionDistributionChart from './PredictionDistributionChart'
+import ModelComplexityPanel from './ModelComplexityPanel'
+import BusinessImpactCalculator from './BusinessImpactCalculator'
 
 function ConfusionMatrix({ labels, values }: { labels: string[]; values: number[][] }) {
   const max = Math.max(...values.flat()) || 1
@@ -72,8 +78,9 @@ export default function EvaluationPage() {
   const { datasetId, datasetName, setPhaseStatus } = usePipelineStore()
   const queryClient = useQueryClient()
   const [running, setRunning] = useState(false)
+  const [activeTab, setActiveTab] = useState(0)
 
-  const { data, isLoading } = useQuery<EvalReportExtended>({
+  const { data, isLoading } = useQuery<EvaluationReport>({
     queryKey: ['evaluation', datasetId],
     queryFn: () => fetch(`/api/evaluation?dataset_id=${datasetId}`).then((r) => {
       if (!r.ok) throw new Error('no_results')
@@ -132,6 +139,17 @@ export default function EvaluationPage() {
 
   const champion = data?.leaderboard?.find((m) => m.model_id === data.champion_model_id)
 
+  // Derive TP/FP/FN/TN for threshold analysis from optimal threshold point
+  const optimalThreshPt = data?.threshold_analysis?.find(
+    (pt) => Math.abs(pt.threshold - (data.optimal_threshold ?? 0.5)) < 0.03
+  ) ?? data?.threshold_analysis?.[0]
+
+  // Prevalence = positive class fraction (for PR baseline)
+  const prevalence = data?.confusion_matrix?.values?.length === 2
+    ? (data.confusion_matrix.values[0][0] + data.confusion_matrix.values[0][1]) /
+      Math.max(data.confusion_matrix.values.flat().reduce((a, b) => a + b, 0), 1)
+    : undefined
+
   return (
     <Box>
       <PageHeader
@@ -154,7 +172,7 @@ export default function EvaluationPage() {
       {(running || runMutation.isPending) && (
         <Box sx={{ mb: 2 }}>
           <Alert severity="info" sx={{ mb: 1 }}>
-            Evaluating champion model with cross-validation — computing confusion matrix, ROC curve, and feature importances…
+            Evaluating champion model — computing confusion matrix, ROC/PR curves, feature importances, learning curves, calibration, and complexity…
           </Alert>
           <LinearProgress />
         </Box>
@@ -169,20 +187,59 @@ export default function EvaluationPage() {
       {!data && !running && !runMutation.isPending && (
         <SectionCard title="Ready to Evaluate">
           <Alert severity="info">
-            Click <strong>Run Evaluation</strong> to compute confusion matrix, ROC curve, feature importances, and overfitting analysis for all trained models.
+            Click <strong>Run Evaluation</strong> to compute confusion matrix, ROC/PR curves, feature importances, threshold analysis, learning curves, and model complexity.
           </Alert>
         </SectionCard>
       )}
 
       {data && (
         <>
+          {/* Stale evaluation warning */}
+          {data.stale && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 2 }}
+              action={
+                <Button
+                  size="small"
+                  color="inherit"
+                  onClick={() => { setRunning(true); runMutation.mutate() }}
+                  disabled={running || runMutation.isPending}
+                >
+                  Re-run Now
+                </Button>
+              }
+            >
+              <strong>Evaluation is out of date.</strong> Training was run after the last evaluation — the champion shown here may differ from the current Rank 1 model in training. Re-run evaluation to sync.
+            </Alert>
+          )}
+
+          {/* Evaluation engine error — surfaced for diagnostics */}
+          {data.eval_error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              <strong>Evaluation engine error (deep metrics unavailable):</strong> {data.eval_error}
+            </Alert>
+          )}
+
           {/* Overfitting warnings */}
           {(data.overfit_warnings ?? []).length > 0 && (
             <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mb: 2 }}>
-              <strong>Overfitting detected:</strong>
+              <strong>Overfitting detected in candidate models</strong> — these non-champion candidates may generalise poorly:
               <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
                 {data.overfit_warnings!.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
+            </Alert>
+          )}
+
+          {/* McNemar significance badge */}
+          {data.mcnemar && (
+            <Alert
+              severity={data.mcnemar.significant ? 'success' : 'info'}
+              sx={{ mb: 2 }}
+            >
+              Statistical significance (McNemar test): champion <strong>{data.mcnemar.champion}</strong> vs challenger <strong>{data.mcnemar.challenger}</strong> —{' '}
+              p = <strong>{data.mcnemar.p_value.toFixed(4)}</strong>
+              {data.mcnemar.significant ? ' ✅ Champion is significantly better.' : ' — difference not statistically significant at α=0.05.'}
             </Alert>
           )}
 
@@ -202,73 +259,216 @@ export default function EvaluationPage() {
             </Grid>
           )}
 
-          {/* Leaderboard */}
-          <SectionCard title="Model Leaderboard" subheader="Click column headers to sort · Overfit = train-CV gap > 10%" noPadding sx={{ mb: 2 }}>
-            <div className="ag-theme-alpine-dark" style={{ height: 280, width: '100%' }}>
-              <AgGridReact
-                rowData={data.leaderboard}
-                columnDefs={colDefs}
-                defaultColDef={{ resizable: true }}
-                suppressMovableColumns
-                animateRows
+          {/* Tab navigation */}
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto">
+              <Tab label="Overview" />
+              <Tab label="Per-Class Metrics" />
+              <Tab
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    Threshold & Impact
+                    {data.optimal_threshold != null && (
+                      <Chip label={`opt=${data.optimal_threshold.toFixed(2)}`} size="small" color="success" sx={{ fontSize: '0.65rem', height: 18 }} />
+                    )}
+                  </Box>
+                }
               />
-            </div>
-          </SectionCard>
+              <Tab label="Curves" />
+              <Tab label="Complexity" />
+            </Tabs>
+          </Box>
 
-          <Grid container spacing={2}>
-            {/* Confusion matrix */}
-            {data.confusion_matrix?.labels?.length > 0 && (
-              <Grid size={{ xs: 12, lg: 5 }}>
-                <SectionCard title="Confusion Matrix" subheader={`Champion: ${data.champion_model_name}`}>
-                  <ConfusionMatrix labels={data.confusion_matrix.labels} values={data.confusion_matrix.values} />
-                </SectionCard>
-              </Grid>
-            )}
+          {/* ── Tab 0: Overview ── */}
+          {activeTab === 0 && (
+            <>
+              {/* Leaderboard */}
+              <SectionCard title="Model Leaderboard" subheader="Click column headers to sort · Overfit = train-CV gap > 10%" noPadding sx={{ mb: 2 }}>
+                <div className="ag-theme-alpine-dark" style={{ height: 280, width: '100%' }}>
+                  <AgGridReact
+                    rowData={data.leaderboard}
+                    columnDefs={colDefs}
+                    defaultColDef={{ resizable: true }}
+                    suppressMovableColumns
+                    animateRows
+                  />
+                </div>
+              </SectionCard>
 
-            {/* ROC curve */}
-            {data.roc_curve?.length > 0 && (
-              <Grid size={{ xs: 12, lg: 7 }}>
-                <SectionCard title="ROC Curve" subheader={`AUC = ${champion?.auc_roc.toFixed(4)}`}>
-                  <Box sx={{ height: 280 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={data.roc_curve} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="fpr" tickFormatter={(v) => v.toFixed(1)} label={{ value: 'FPR', position: 'insideBottomRight', offset: -5, fontSize: 12 }} />
-                        <YAxis tickFormatter={(v) => v.toFixed(1)} label={{ value: 'TPR', angle: -90, position: 'insideLeft', fontSize: 12 }} />
-                        <RechartsTooltip formatter={(v: any) => [Number(v).toFixed(3)]} />
-                        <ReferenceLine stroke="#555" segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} strokeDasharray="5 5" />
-                        <Line type="monotone" dataKey="tpr" stroke="#6C63FF" strokeWidth={2} dot={false} name="ROC" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </SectionCard>
-              </Grid>
-            )}
+              <Grid container spacing={2}>
+                {/* Confusion matrix */}
+                {data.confusion_matrix?.labels?.length > 0 && (
+                  <Grid size={{ xs: 12, lg: 5 }}>
+                    <SectionCard title="Confusion Matrix" subheader={`Champion: ${data.champion_model_name}`}>
+                      <ConfusionMatrix labels={data.confusion_matrix.labels} values={data.confusion_matrix.values} />
+                    </SectionCard>
+                  </Grid>
+                )}
 
-            {/* Feature importances */}
-            {data.feature_importances?.length > 0 && (
-              <Grid size={{ xs: 12 }}>
-                <SectionCard title="Feature Importances" subheader={`Champion model: ${data.champion_model_name} · Top ${Math.min(data.feature_importances.length, 20)}`}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                    {data.feature_importances.slice(0, 20).map((fi: any) => (
-                      <Box key={fi.feature} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="caption" sx={{ width: 180, flexShrink: 0, fontFamily: 'monospace' }}>{fi.feature}</Typography>
-                        <Box sx={{ flex: 1, bgcolor: 'action.hover', borderRadius: 1, height: 14, position: 'relative' }}>
-                          <Box sx={{ width: `${(fi.importance * 100).toFixed(1)}%`, bgcolor: 'primary.main', borderRadius: 1, height: '100%', minWidth: 2 }} />
-                        </Box>
-                        <Typography variant="caption" sx={{ width: 52, textAlign: 'right', flexShrink: 0 }}>
-                          {(fi.importance * 100).toFixed(2)}%
-                        </Typography>
+                {/* ROC curve */}
+                {data.roc_curve?.length > 0 && (
+                  <Grid size={{ xs: 12, lg: 7 }}>
+                    <SectionCard title="ROC Curve" subheader={`AUC = ${champion?.auc_roc.toFixed(4)}`}>
+                      <Box sx={{ height: 280 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={data.roc_curve} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                            <XAxis dataKey="fpr" tickFormatter={(v) => v.toFixed(1)} label={{ value: 'FPR', position: 'insideBottomRight', offset: -5, fontSize: 12 }} />
+                            <YAxis tickFormatter={(v) => v.toFixed(1)} label={{ value: 'TPR', angle: -90, position: 'insideLeft', fontSize: 12 }} />
+                            <RechartsTooltip formatter={(v: any) => [Number(v).toFixed(3)]} />
+                            <ReferenceLine stroke="#555" segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]} strokeDasharray="5 5" />
+                            <Line type="monotone" dataKey="tpr" stroke="#6C63FF" strokeWidth={2} dot={false} name="ROC" />
+                          </LineChart>
+                        </ResponsiveContainer>
                       </Box>
-                    ))}
-                  </Box>
-                </SectionCard>
+                    </SectionCard>
+                  </Grid>
+                )}
+
+                {/* Feature importances */}
+                {data.feature_importances?.length > 0 && (
+                  <Grid size={{ xs: 12 }}>
+                    <SectionCard title="Feature Importances" subheader={`Champion model: ${data.champion_model_name} · Top ${Math.min(data.feature_importances.length, 20)}`}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                        {data.feature_importances.slice(0, 20).map((fi: any) => (
+                          <Box key={fi.feature} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="caption" sx={{ width: 180, flexShrink: 0, fontFamily: 'monospace' }}>{fi.feature}</Typography>
+                            <Box sx={{ flex: 1, bgcolor: 'action.hover', borderRadius: 1, height: 14, position: 'relative' }}>
+                              <Box sx={{ width: `${(fi.importance * 100).toFixed(1)}%`, bgcolor: 'primary.main', borderRadius: 1, height: '100%', minWidth: 2 }} />
+                            </Box>
+                            <Typography variant="caption" sx={{ width: 52, textAlign: 'right', flexShrink: 0 }}>
+                              {(fi.importance * 100).toFixed(2)}%
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    </SectionCard>
+                  </Grid>
+                )}
               </Grid>
-            )}
-          </Grid>
+            </>
+          )}
+
+          {/* ── Tab 1: Per-Class Metrics ── */}
+          {activeTab === 1 && (
+            <SectionCard title="Per-Class Metrics" subheader="Precision, Recall, F1, and support per class — color codes: 🟢 ≥0.7 · 🟡 0.5–0.7 · 🔴 <0.5">
+              {data.per_class_metrics?.length
+                ? <PerClassMetricsTable metrics={data.per_class_metrics} />
+                : <Alert severity="info">Click <strong>Re-run Evaluation</strong> to compute per-class metrics for the champion model.</Alert>
+              }
+            </SectionCard>
+          )}
+
+          {/* ── Tab 2: Threshold & Business Impact ── */}
+          {activeTab === 2 && (
+            <Grid container spacing={2}>
+              {(data.n_classes ?? 2) > 2 ? (
+                <Grid size={12}>
+                  <Alert severity="info">
+                    <strong>Threshold analysis is only available for binary classification.</strong>
+                    {' '}This model has {data.n_classes} output classes. For per-class performance, see the <em>Per-Class Metrics</em> tab.
+                  </Alert>
+                </Grid>
+              ) : data.threshold_analysis?.length ? (
+                <>
+                  <Grid size={{ xs: 12 }}>
+                    <SectionCard
+                      title="Decision Threshold Analysis"
+                      subheader={`Drag slider to explore trade-offs · Optimal threshold (max F1) = ${data.optimal_threshold?.toFixed(2) ?? '0.50'}`}
+                    >
+                      <ThresholdSlider data={data.threshold_analysis} optimalThreshold={data.optimal_threshold ?? 0.5} />
+                    </SectionCard>
+                  </Grid>
+                  {optimalThreshPt && (
+                    <Grid size={{ xs: 12 }}>
+                      <SectionCard
+                        title="Business Impact Calculator"
+                        subheader={`Counts at optimal threshold (${data.optimal_threshold?.toFixed(2) ?? '0.50'}) — adjust values to match your cost model`}
+                      >
+                        <BusinessImpactCalculator
+                          tp={optimalThreshPt.tp}
+                          fp={optimalThreshPt.fp}
+                          fn={optimalThreshPt.fn}
+                          tn={optimalThreshPt.tn}
+                        />
+                      </SectionCard>
+                    </Grid>
+                  )}
+                </>
+              ) : (
+                <Grid size={12}>
+                  <Alert severity="info">Click <strong>Re-run Evaluation</strong> to compute threshold sweep and business impact analysis.</Alert>
+                </Grid>
+              )}
+            </Grid>
+          )}
+
+          {/* ── Tab 3: Curves ── */}
+          {activeTab === 3 && (
+            <Grid container spacing={2}>
+              {/* ROC curve — binary or multiclass OVR best-class */}
+              {data.roc_curve && data.roc_curve.length > 0 && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <SectionCard
+                    title={(data.n_classes ?? 2) > 2 ? 'ROC Curve (best class, one-vs-rest)' : 'ROC Curve'}
+                    subheader={(data.n_classes ?? 2) > 2
+                      ? `Multiclass OVR: showing highest-AUC class · ${data.n_classes} total classes`
+                      : 'True positive rate vs false positive rate'}
+                  >
+                    {/* Reuse PRCurveChart as a simple ROC renderer */}
+                    <PRCurveChart data={data.roc_curve.map((p: any) => ({ recall: p.fpr, precision: p.tpr }))} prevalence={0} isROC />
+                  </SectionCard>
+                </Grid>
+              )}
+              {/* PR curve — binary only */}
+              {data.pr_curve && data.pr_curve.length > 0 && (data.n_classes ?? 2) === 2 && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <SectionCard title="Precision-Recall Curve" subheader="Critical for imbalanced datasets — area under curve should exceed baseline">
+                    <PRCurveChart data={data.pr_curve} prevalence={prevalence} />
+                  </SectionCard>
+                </Grid>
+              )}
+              {data.learning_curve && data.learning_curve.length > 0 && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <SectionCard title="Learning Curves" subheader="Train vs validation score as training data grows — diagnoses over/underfitting">
+                    <LearningCurveChart data={data.learning_curve} />
+                  </SectionCard>
+                </Grid>
+              )}
+              {data.calibration_data && data.calibration_data.length > 0 && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <SectionCard title="Calibration Curve" subheader="Do predicted probabilities match actual frequencies? (reliability diagram)">
+                    <CalibrationChart data={data.calibration_data} />
+                  </SectionCard>
+                </Grid>
+              )}
+              {data.prediction_distribution && data.prediction_distribution.length > 0 && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <SectionCard title="Score Distribution" subheader="Distribution of model output probabilities by true class — wider separation = better">
+                    <PredictionDistributionChart data={data.prediction_distribution} optimalThreshold={data.optimal_threshold} />
+                  </SectionCard>
+                </Grid>
+              )}
+              {!data.roc_curve?.length && !data.pr_curve?.length && !data.learning_curve?.length && !data.calibration_data?.length && !data.prediction_distribution?.length && (
+                <Grid size={12}>
+                  <Alert severity="info">Click <strong>Re-run Evaluation</strong> to compute ROC curve, learning curves, calibration, and score distribution charts.</Alert>
+                </Grid>
+              )}
+            </Grid>
+          )}
+
+          {/* ── Tab 4: Complexity ── */}
+          {activeTab === 4 && (
+            <SectionCard title="Model Complexity & Deployment Readiness" subheader={`Champion: ${data.champion_model_name} · Estimated at evaluation time`}>
+              {data.model_complexity
+                ? <ModelComplexityPanel complexity={data.model_complexity} />
+                : <Alert severity="info">Click <strong>Re-run Evaluation</strong> to compute model size, inference latency, and throughput estimates.</Alert>
+              }
+            </SectionCard>
+          )}
 
           {/* Promote button */}
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
             <Button variant="contained" color="success" startIcon={<RocketLaunchIcon />} size="large" disabled>
               Promote Champion to Production (Phase 11)
             </Button>

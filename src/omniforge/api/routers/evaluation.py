@@ -64,7 +64,21 @@ async def get_evaluation(dataset_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     if dataset.evaluation_results:
-        return dataset.evaluation_results
+        eval_res = dict(dataset.evaluation_results)
+        # Staleness check: if training happened after evaluation, flag it
+        trained_at_str = (dataset.training_results or {}).get("trained_at")
+        evaluated_at_str = eval_res.get("evaluated_at")
+        if trained_at_str and evaluated_at_str:
+            from datetime import datetime
+            try:
+                trained_at = datetime.fromisoformat(trained_at_str)
+                evaluated_at = datetime.fromisoformat(evaluated_at_str)
+                eval_res["stale"] = trained_at > evaluated_at
+            except ValueError:
+                pass
+        elif trained_at_str and not evaluated_at_str:
+            eval_res["stale"] = True
+        return eval_res
 
     raise HTTPException(
         status_code=404,
@@ -117,7 +131,7 @@ async def run_evaluation_endpoint(
         text("UPDATE datasets SET evaluation_results=:r, updated_at=:now WHERE id=:id"),
         {
             "id": body.dataset_id,
-            "r": json.dumps(evaluation_results),
+            "r": json.dumps({**evaluation_results, "evaluated_at": datetime.now(timezone.utc).isoformat()}),
             "now": datetime.now(timezone.utc),
         },
     )

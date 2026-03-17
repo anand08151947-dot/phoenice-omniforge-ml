@@ -333,6 +333,9 @@ export interface ModelComplexity {
   model_size_kb?: number
   inference_ms_per_row?: number
   batch_throughput_per_sec?: number
+  n_parameters?: number
+  model_type?: string
+  eval_error?: string
 }
 
 export interface ModelCandidate {
@@ -611,13 +614,53 @@ export interface ROCPoint {
   tpr: number
 }
 
+export interface CalibrationPoint {
+  mean_predicted: number
+  fraction_positive: number
+}
+
+export interface PredictionBin {
+  bin: number
+  count_positive: number
+  count_negative: number
+}
+
+export interface McNemarResult {
+  statistic: number
+  p_value: number
+  significant: boolean
+  ab: number
+  ba: number
+  champion: string
+  challenger: string
+}
+
 export interface EvaluationReport {
   dataset_id: string
   champion_model_id: string
+  champion_model_name?: string
+  task_type?: string
+  target_column?: string
+  n_features?: number
+  n_classes?: number | null
+  sampling_strategy?: string
   leaderboard: LeaderboardEntry[]
   confusion_matrix: ConfusionMatrix
   roc_curve: ROCPoint[]
+  pr_curve?: PRPoint[]
+  per_class_metrics?: PerClassMetric[]
+  threshold_analysis?: ThresholdPoint[]
+  optimal_threshold?: number
+  prediction_distribution?: PredictionBin[]
+  calibration_data?: CalibrationPoint[]
+  learning_curve?: LearningCurvePoint[]
+  model_complexity?: ModelComplexity
+  mcnemar?: McNemarResult
   feature_importances: FeatureImportance[]
+  overfit_warnings?: string[]
+  evaluated_at?: string
+  stale?: boolean
+  eval_error?: string
 }
 
 // ── Explain ──────────────────────────────────────────────────

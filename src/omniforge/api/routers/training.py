@@ -201,7 +201,7 @@ async def run_training_endpoint(body: TrainingRunRequest, db: AsyncSession = Dep
 
     await db.execute(
         text("UPDATE datasets SET training_results=:r, updated_at=:now WHERE id=:id"),
-        {"id": body.dataset_id, "r": json.dumps(training_results), "now": datetime.now(timezone.utc)},
+        {"id": body.dataset_id, "r": json.dumps({**training_results, "trained_at": datetime.now(timezone.utc).isoformat()}), "now": datetime.now(timezone.utc)},
     )
     await db.commit()
     return training_results
