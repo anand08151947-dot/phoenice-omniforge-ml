@@ -384,6 +384,17 @@ export interface ModelCandidate {
   anomaly_score_percentiles?: Record<string, number>
   precision?: number
   recall?: number
+  // Forecasting-specific
+  mae?: number
+  mape?: number
+  smape?: number
+  forecast?: Array<{ period: string; value: number }>
+  n_lags?: number
+  // NLP-specific
+  vocab_size?: number
+  top_terms?: Array<{ term: string; score: number }>
+  text_column?: string
+  n_classes?: number
 }
 
 export interface TrainingResults {
@@ -391,6 +402,18 @@ export interface TrainingResults {
   candidates: ModelCandidate[]
   best_model?: string
   best_cv_score?: number
+  // Forecasting-specific
+  date_column?: string
+  n_lags?: number
+  n_forecast?: number
+  forecast_horizon?: number
+  historical?: Array<{ period: string; value: number }>
+  // NLP-specific
+  text_column?: string
+  vocab_size?: number
+  top_terms?: Array<{ term: string; score: number }>
+  n_classes?: number
+  classes?: string[]
 }
 
 export interface HyperparamDef {

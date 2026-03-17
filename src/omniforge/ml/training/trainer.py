@@ -506,7 +506,338 @@ def _train_model_cv(model, X: np.ndarray, y: np.ndarray,
     }
 
 
-# ─── NLP text classification ──────────────────────────────────────────────────
+
+
+# ─── time-series / forecasting helpers ───────────────────────────────────────
+
+def _detect_date_column(df: pd.DataFrame, exclude: str | None = None) -> str | None:
+    """Return the first column that looks like a date/datetime."""
+    # 1. dtype-based detection
+    for col in df.columns:
+        if col == exclude:
+            continue
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            return col
+    # 2. Try parsing object columns
+    for col in df.columns:
+        if col == exclude:
+            continue
+        if df[col].dtype != "object":
+            continue
+        sample = df[col].dropna().head(200).astype(str)
+        try:
+            parsed = pd.to_datetime(sample, infer_datetime_format=True, errors="coerce")
+            if parsed.notna().mean() > 0.7:
+                return col
+        except Exception:
+            continue
+    return None
+
+
+def _make_lag_features(series: pd.Series, lags: list[int]) -> pd.DataFrame:
+    """Create lag columns from a time series."""
+    data = {"y": series.values}
+    for lag in lags:
+        data[f"lag_{lag}"] = series.shift(lag).values
+    df_lags = pd.DataFrame(data).dropna()
+    return df_lags
+
+
+def _smape(actual: np.ndarray, predicted: np.ndarray) -> float:
+    denom = (np.abs(actual) + np.abs(predicted)) / 2.0
+    mask = denom > 0
+    return float(np.mean(np.abs(actual[mask] - predicted[mask]) / denom[mask])) * 100.0
+
+
+def _mape(actual: np.ndarray, predicted: np.ndarray) -> float:
+    mask = actual != 0
+    if not mask.any():
+        return 0.0
+    return float(np.mean(np.abs((actual[mask] - predicted[mask]) / actual[mask]))) * 100.0
+
+
+def _run_forecasting(
+    dataset_id: str,
+    df: pd.DataFrame,
+    target_column: str,
+    date_col: str | None,
+    n_splits: int = 5,
+    n_lags: int = 12,
+    n_forecast: int = 12,
+) -> dict:
+    """Walk-forward forecasting: Naive, Exp Smoothing, Ridge+lags, GBM+lags."""
+    from sklearn.linear_model import Ridge
+    from sklearn.ensemble import GradientBoostingRegressor
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.metrics import mean_squared_error, mean_absolute_error
+    from sklearn.model_selection import TimeSeriesSplit
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+    # ── Sort by date / index ──────────────────────────────────────────────────
+    if date_col and date_col in df.columns:
+        df = df.copy()
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df = df.sort_values(date_col).reset_index(drop=True)
+    else:
+        df = df.copy().reset_index(drop=True)
+
+    y_series = pd.to_numeric(df[target_column], errors="coerce").fillna(method="ffill").fillna(0)
+    y_all = y_series.values.astype(float)
+    n = len(y_all)
+
+    if n < 20:
+        raise ValueError(f"Forecasting requires at least 20 rows, got {n}.")
+
+    n_splits_actual = min(n_splits, max(2, n // 10))
+    tscv = TimeSeriesSplit(n_splits=n_splits_actual)
+
+    # ── Lag feature matrix ────────────────────────────────────────────────────
+    lags = list(range(1, min(n_lags + 1, n // 4 + 1)))
+    lag_df = _make_lag_features(y_series, lags)
+    lag_offset = max(lags)  # rows lost due to lagging
+    X_lag = lag_df[[c for c in lag_df.columns if c != "y"]].values
+    y_lag = lag_df["y"].values
+    n_lag = len(y_lag)
+
+    # ── Candidate definitions ─────────────────────────────────────────────────
+    candidates_cfg = [
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Naive (Last Value)",
+            "kind": "naive",
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Exponential Smoothing (Holt-Winters)",
+            "kind": "ets",
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Ridge Regression (Lag Features)",
+            "kind": "ridge",
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Gradient Boosting (Lag Features)",
+            "kind": "gbm",
+        },
+    ]
+
+    results = []
+
+    for cfg in candidates_cfg:
+        t0 = time.time()
+        kind = cfg["kind"]
+        rmse_folds, mae_folds, mape_folds = [], [], []
+
+        try:
+            if kind in ("ridge", "gbm"):
+                for train_idx, test_idx in tscv.split(X_lag):
+                    X_tr, X_te = X_lag[train_idx], X_lag[test_idx]
+                    y_tr, y_te = y_lag[train_idx], y_lag[test_idx]
+                    if kind == "ridge":
+                        scaler = StandardScaler()
+                        X_tr_s = scaler.fit_transform(X_tr)
+                        X_te_s = scaler.transform(X_te)
+                        m = Ridge(alpha=1.0)
+                        m.fit(X_tr_s, y_tr)
+                        y_pred = m.predict(X_te_s)
+                    else:
+                        m = GradientBoostingRegressor(n_estimators=100, max_depth=3,
+                                                      learning_rate=0.1, random_state=42)
+                        m.fit(X_tr, y_tr)
+                        y_pred = m.predict(X_te)
+                    rmse_folds.append(float(np.sqrt(mean_squared_error(y_te, y_pred))))
+                    mae_folds.append(float(mean_absolute_error(y_te, y_pred)))
+                    mape_folds.append(_mape(y_te, y_pred))
+
+                # Final model for forecast
+                if kind == "ridge":
+                    scaler = StandardScaler()
+                    X_s = scaler.fit_transform(X_lag)
+                    final_m = Ridge(alpha=1.0).fit(X_s, y_lag)
+                else:
+                    final_m = GradientBoostingRegressor(n_estimators=100, max_depth=3,
+                                                        learning_rate=0.1, random_state=42)
+                    final_m.fit(X_lag, y_lag)
+
+                # Recursive multi-step forecast
+                hist = list(y_all[-max(lags):])
+                forecast_vals = []
+                for _ in range(n_forecast):
+                    x_in = np.array([[hist[-lag] for lag in lags]])
+                    if kind == "ridge":
+                        x_in_s = scaler.transform(x_in)
+                        nxt = float(final_m.predict(x_in_s)[0])
+                    else:
+                        nxt = float(final_m.predict(x_in)[0])
+                    forecast_vals.append(nxt)
+                    hist.append(nxt)
+
+            elif kind == "naive":
+                for train_idx, test_idx in tscv.split(y_all):
+                    y_tr, y_te = y_all[train_idx], y_all[test_idx]
+                    y_pred = np.full_like(y_te, y_tr[-1], dtype=float)
+                    rmse_folds.append(float(np.sqrt(mean_squared_error(y_te, y_pred))))
+                    mae_folds.append(float(mean_absolute_error(y_te, y_pred)))
+                    mape_folds.append(_mape(y_te, y_pred))
+                last_val = float(y_all[-1])
+                forecast_vals = [last_val] * n_forecast
+
+            elif kind == "ets":
+                for train_idx, test_idx in tscv.split(y_all):
+                    y_tr, y_te = y_all[train_idx], y_all[test_idx]
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            m = ExponentialSmoothing(
+                                y_tr,
+                                trend="add",
+                                seasonal=None,
+                                initialization_method="estimated",
+                            ).fit(optimized=True, disp=False)
+                        y_pred = m.forecast(len(y_te))
+                    except Exception:
+                        # Fallback to simple exponential smoothing
+                        alpha = 0.3
+                        pred = y_tr[-1]
+                        y_pred = []
+                        for _ in range(len(y_te)):
+                            y_pred.append(pred)
+                        y_pred = np.array(y_pred, dtype=float)
+                    rmse_folds.append(float(np.sqrt(mean_squared_error(y_te, y_pred))))
+                    mae_folds.append(float(mean_absolute_error(y_te, y_pred)))
+                    mape_folds.append(_mape(y_te, y_pred))
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        final_m = ExponentialSmoothing(
+                            y_all, trend="add", seasonal=None,
+                            initialization_method="estimated",
+                        ).fit(optimized=True, disp=False)
+                    forecast_vals = list(final_m.forecast(n_forecast).astype(float))
+                except Exception:
+                    forecast_vals = [float(y_all[-1])] * n_forecast
+
+            rmse_mean = round(float(np.mean(rmse_folds)), 4)
+            mae_mean = round(float(np.mean(mae_folds)), 4)
+            mape_mean = round(float(np.mean(mape_folds)), 2)
+            smape_all_idx = list(tscv.split(y_all))[-1][1]
+            y_last_test = y_all[smape_all_idx]
+            forecast_check = forecast_vals[:len(y_last_test)] if len(forecast_vals) >= len(y_last_test) else forecast_vals
+            smape_val = _smape(y_last_test[:len(forecast_check)], np.array(forecast_check))
+
+            # Build forecast timeline
+            if date_col and date_col in df.columns:
+                last_date = pd.to_datetime(df[date_col].dropna().iloc[-1])
+                freq_delta = None
+                if len(df) > 1:
+                    dts = pd.to_datetime(df[date_col].dropna())
+                    freq_delta = (dts.iloc[-1] - dts.iloc[0]) / max(len(dts) - 1, 1)
+                forecast_dates = []
+                for i in range(1, n_forecast + 1):
+                    if freq_delta:
+                        forecast_dates.append(str((last_date + freq_delta * i).date()))
+                    else:
+                        forecast_dates.append(f"T+{i}")
+            else:
+                forecast_dates = [f"T+{i}" for i in range(1, n_forecast + 1)]
+
+            forecast_series = [
+                {"period": fd, "value": round(fv, 6)}
+                for fd, fv in zip(forecast_dates, forecast_vals)
+            ]
+
+            results.append({
+                "id": cfg["id"],
+                "model_name": cfg["model_name"],
+                "library": "statsmodels" if kind == "ets" else "sklearn",
+                "status": "done",
+                "progress": 100,
+                "cv_score": round(-rmse_mean, 4),  # neg so higher = better for sorting
+                "cv_std": round(float(np.std(rmse_folds)), 4),
+                "cv_min": round(float(np.min(rmse_folds)), 4),
+                "cv_max": round(float(np.max(rmse_folds)), 4),
+                "train_score": round(-rmse_mean, 4),
+                "val_score": round(-rmse_mean, 4),
+                "f1": 0.0,
+                "auc_roc": 0.0,
+                "rmse": rmse_mean,
+                "mae": mae_mean,
+                "mape": mape_mean,
+                "smape": round(smape_val, 2),
+                "fold_scores": [round(-r, 4) for r in rmse_folds],
+                "forecast": forecast_series,
+                "n_lags": len(lags) if kind in ("ridge", "gbm") else 0,
+                "hyperparams": {"n_lags": len(lags), "n_splits": n_splits_actual},
+                "n_features": len(lags) if kind in ("ridge", "gbm") else 1,
+                "feature_importances": [],
+                "per_class_metrics": [],
+                "confusion_matrix_data": {},
+                "threshold_analysis": [],
+                "roc_curve_data": [],
+                "pr_curve_data": [],
+                "complexity": {},
+                "learning_curve": [],
+                "train_time_s": round(time.time() - t0, 2),
+                "strengths": [f"RMSE={rmse_mean:.4f}", f"MAE={mae_mean:.4f}", f"MAPE={mape_mean:.1f}%"],
+                "weaknesses": [],
+            })
+
+        except Exception as exc:
+            results.append({
+                "id": cfg["id"],
+                "model_name": cfg["model_name"],
+                "library": "statsmodels" if kind == "ets" else "sklearn",
+                "status": "failed",
+                "error": str(exc),
+                "cv_score": -9999.0, "cv_std": 0.0, "cv_min": 0.0, "cv_max": 0.0,
+                "train_score": -9999.0, "val_score": -9999.0,
+                "f1": 0.0, "auc_roc": 0.0, "rmse": None, "mae": None,
+                "mape": None, "smape": None, "fold_scores": [],
+                "forecast": [], "n_lags": 0,
+                "hyperparams": {}, "n_features": 0,
+                "feature_importances": [], "per_class_metrics": [],
+                "confusion_matrix_data": {}, "threshold_analysis": [],
+                "roc_curve_data": [], "pr_curve_data": [],
+                "complexity": {}, "learning_curve": [],
+                "train_time_s": round(time.time() - t0, 2),
+                "strengths": [], "weaknesses": [],
+            })
+
+    # Sort ascending by RMSE (lowest = best); failed models last
+    results.sort(
+        key=lambda r: r["rmse"] if r["rmse"] is not None else float("inf")
+    )
+
+    best = results[0] if results else {}
+
+    # Historical series for charting
+    historical = [
+        {"period": str(df[date_col].iloc[i].date()) if date_col and date_col in df.columns else str(i),
+         "value": round(float(y_all[i]), 6)}
+        for i in range(n)
+    ] if n <= 2000 else []
+
+    return {
+        "dataset_id": dataset_id,
+        "task_type": "forecasting",
+        "target_column": target_column,
+        "date_column": date_col,
+        "n_features": len(lags),
+        "features_used": [target_column],
+        "sampling_strategy": "none",
+        "leakage_warnings": [],
+        "candidates": results,
+        "best_model": best.get("model_name"),
+        "best_cv_score": best.get("rmse"),
+        "n_lags": len(lags),
+        "n_forecast": n_forecast,
+        "historical": historical,
+        "forecast_horizon": n_forecast,
+    }
+
+
 
 def _detect_text_columns(df: pd.DataFrame, exclude: str | None = None,
                           min_avg_words: float = 3.0) -> list[str]:
@@ -1035,6 +1366,16 @@ def run_training(
         contamination = (sampling_config or {}).get("config", {}).get("contamination", 0.05)
         contamination = min(max(float(contamination), 0.01), 0.49)
         return _run_anomaly_detection(dataset_id, df, feature_cols, contamination, target_column)
+
+    if task_type == "forecasting":
+        if not target_column:
+            raise ValueError("target_column is required for forecasting")
+        date_col = (sampling_config or {}).get("config", {}).get("date_column") or \
+                   _detect_date_column(df, exclude=target_column)
+        n_forecast = int((sampling_config or {}).get("config", {}).get("n_forecast", 12))
+        n_lags = int((sampling_config or {}).get("config", {}).get("n_lags", 12))
+        return _run_forecasting(dataset_id, df, target_column, date_col,
+                                n_forecast=n_forecast, n_lags=n_lags)
 
     if task_type == "text_classification":
         if not target_column:

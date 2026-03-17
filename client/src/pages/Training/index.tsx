@@ -149,6 +149,7 @@ export default function TrainingPage() {
   const isClustering = data?.task_type === 'clustering'
   const isAnomalyDetection = data?.task_type === 'anomaly_detection'
   const isNLP = data?.task_type === 'text_classification'
+  const isForecasting = data?.task_type === 'forecasting'
   const isUnsupervised = isClustering || isAnomalyDetection
 
   return (
@@ -238,6 +239,16 @@ export default function TrainingPage() {
             </Alert>
           )}
 
+          {/* Forecasting info banner */}
+          {isForecasting && (
+            <Alert severity="info" icon={<InfoOutlinedIcon />} sx={{ mb: 2 }}>
+              <strong>Time Series Forecasting</strong> — Walk-forward CV with {(data as any).n_lags ?? 12} lag features.
+              Date column: <strong>{(data as any).date_column ?? 'auto-detected'}</strong> ·
+              Forecast horizon: <strong>{(data as any).forecast_horizon ?? 12} periods</strong> ·
+              Ranked by RMSE (lower is better).
+            </Alert>
+          )}
+
           {/* Leakage Warnings */}
           {(data.leakage_warnings?.length ?? 0) > 0 && (
             <Alert
@@ -261,7 +272,7 @@ export default function TrainingPage() {
           {/* Leaderboard */}
           <SectionCard
             title="Model Leaderboard"
-            subheader={`${data.candidates.length} models trained · Ranked by ${isClustering ? 'Silhouette Score' : isAnomalyDetection ? 'Contamination Match' : isNLP ? 'Weighted F1' : isClassifier ? 'CV Accuracy' : 'CV R²'} · Click Details to inspect per-fold scores, class metrics, and threshold analysis`}
+            subheader={`${data.candidates.length} models trained · Ranked by ${isClustering ? 'Silhouette Score' : isAnomalyDetection ? 'Contamination Match' : isNLP ? 'Weighted F1' : isForecasting ? 'RMSE ↓' : isClassifier ? 'CV Accuracy' : 'CV R²'} · Click Details to inspect per-fold scores, class metrics, and threshold analysis`}
           >
             <TableContainer>
               <Table size="small">
@@ -271,7 +282,7 @@ export default function TrainingPage() {
                     <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Library</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>
-                      {isClustering ? 'Silhouette ± σ' : isAnomalyDetection ? 'Contamination' : isNLP ? 'Accuracy' : isClassifier ? 'CV Accuracy ± σ' : 'CV R² ± σ'}
+                      {isClustering ? 'Silhouette ± σ' : isAnomalyDetection ? 'Contamination' : isNLP ? 'Accuracy' : isForecasting ? 'RMSE' : isClassifier ? 'CV Accuracy ± σ' : 'CV R² ± σ'}
                       <Tooltip title="Mean ± Std deviation across 5 folds. Lower σ = more stable model.">
                         <InfoOutlinedIcon sx={{ fontSize: 14, ml: 0.5, verticalAlign: 'middle', color: 'text.secondary' }} />
                       </Tooltip>
@@ -287,7 +298,9 @@ export default function TrainingPage() {
                     {isNLP && <TableCell sx={{ fontWeight: 700 }}>Vocab Size</TableCell>}
                     {isClustering && <TableCell sx={{ fontWeight: 700 }}>N Clusters</TableCell>}
                     {isAnomalyDetection && <TableCell sx={{ fontWeight: 700 }}>N Anomalies</TableCell>}
-                    {!isClassifier && !isNLP && !isUnsupervised && <TableCell sx={{ fontWeight: 700 }}>RMSE</TableCell>}
+                    {isForecasting && <TableCell sx={{ fontWeight: 700 }}>MAE</TableCell>}
+                    {isForecasting && <TableCell sx={{ fontWeight: 700 }}>MAPE %</TableCell>}
+                    {!isClassifier && !isNLP && !isUnsupervised && !isForecasting && <TableCell sx={{ fontWeight: 700 }}>RMSE</TableCell>}
                     <TableCell sx={{ fontWeight: 700 }}>Train Time</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Details</TableCell>
@@ -297,7 +310,7 @@ export default function TrainingPage() {
                   {data.candidates.map((c, idx) => {
                     const isBest = idx === 0 && c.status === 'done'
                     const isExpanded = expandedId === c.id
-                    const colSpan = isClassifier ? 10 : isNLP ? 10 : isUnsupervised ? 9 : 9
+                    const colSpan = isClassifier ? 10 : isNLP ? 10 : isForecasting ? 11 : isUnsupervised ? 9 : 9
 
                     return (
                       <React.Fragment key={c.id}>
@@ -325,7 +338,10 @@ export default function TrainingPage() {
                             <Chip label={c.library} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
                           </TableCell>
                           <TableCell>
-                            <CvStdCell cvScore={c.cv_score} cvStd={c.cv_std} />
+                            {isForecasting
+                              ? <Typography variant="body2">{c.rmse?.toFixed(4) ?? '—'}</Typography>
+                              : <CvStdCell cvScore={c.cv_score} cvStd={c.cv_std} />
+                            }
                           </TableCell>
                           <TableCell>
                             <OverfitBadge trainScore={c.train_score} cvScore={c.cv_score} />
@@ -355,7 +371,17 @@ export default function TrainingPage() {
                               <Typography variant="body2">{c.n_anomalies ?? '—'}</Typography>
                             </TableCell>
                           )}
-                          {!isClassifier && !isNLP && !isUnsupervised && (
+                          {isForecasting && (
+                            <TableCell>
+                              <Typography variant="body2">{c.mae?.toFixed(4) ?? '—'}</Typography>
+                            </TableCell>
+                          )}
+                          {isForecasting && (
+                            <TableCell>
+                              <Typography variant="body2">{c.mape != null ? `${c.mape.toFixed(1)}%` : '—'}</Typography>
+                            </TableCell>
+                          )}
+                          {!isClassifier && !isNLP && !isUnsupervised && !isForecasting && (
                             <TableCell>
                               <Typography variant="body2">{c.rmse?.toFixed(4) ?? '—'}</Typography>
                             </TableCell>
