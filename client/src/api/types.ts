@@ -773,4 +773,5 @@ export interface ChatMessage {
   timestamp: string
   sources?: string[]
   isStreaming?: boolean
+  lm_studio_used?: boolean
 }

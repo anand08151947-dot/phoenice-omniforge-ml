@@ -38,6 +38,16 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false)
   const [streamingText, setStreamingText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [lmStudioConnected, setLmStudioConnected] = useState<boolean>(false)
+
+  useEffect(() => {
+    fetch('/api/chat/status')
+      .then((res) => res.json())
+      .then((data: { lm_studio_available: boolean; model: string | null }) => {
+        setLmStudioConnected(data.lm_studio_available ?? false)
+      })
+      .catch(() => setLmStudioConnected(false))
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -80,7 +90,9 @@ export default function ChatPage() {
           role: 'assistant',
           content: fullText,
           timestamp: data.timestamp,
+          lm_studio_used: data.lm_studio_used ?? false,
         }
+        setLmStudioConnected((prev) => data.lm_studio_used ?? prev)
         setMessages((prev) => [...prev, aiMsg])
       }
     }, 20)
@@ -91,7 +103,18 @@ export default function ChatPage() {
       <PageHeader
         title="AI Assistant"
         subtitle="Phase 14/15 — Chat with your pipeline, data, and models using LM Studio"
-        badge={<Chip icon={<AutoAwesomeIcon />} label="LM Studio" color="primary" size="small" />}
+        badge={
+          <>
+            <Chip icon={<AutoAwesomeIcon />} label="LM Studio" color="primary" size="small" />
+            <Chip
+              size="small"
+              label={lmStudioConnected ? '🤖 LM Studio' : '💬 Rule-Based Mode'}
+              color={lmStudioConnected ? 'primary' : 'default'}
+              variant={lmStudioConnected ? 'filled' : 'outlined'}
+              sx={{ ml: 1 }}
+            />
+          </>
+        }
       />
 
       {/* Suggestions */}
