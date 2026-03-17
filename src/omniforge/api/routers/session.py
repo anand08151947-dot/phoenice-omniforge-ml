@@ -32,9 +32,15 @@ def _derive_phase_status(dataset: Dataset) -> dict[str, str]:
         "selection":  done_if(bool(dataset.selection_plan)),
         "training":   done_if(bool(dataset.training_results)),
         "evaluation": done_if(bool(dataset.evaluation_results)),
-        "explain":    "pending",
-        "deploy":     "pending",
-        "chat":       "pending",
+        # explain is available once training is done (no separate persisted state needed)
+        "explain":    done_if(bool(dataset.training_results)),
+        # deploy is done once a deployment record exists in training_results
+        "deploy":     done_if(
+            bool(dataset.training_results)
+            and bool((dataset.training_results or {}).get("deployments"))
+        ),
+        # chat is always available once a dataset is loaded
+        "chat":       done_if(bool(dataset.status == DatasetStatus.ready)),
     }
 
 
