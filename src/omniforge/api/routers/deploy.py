@@ -6,7 +6,7 @@ import math
 import random
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -24,9 +24,9 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 class DeployRequest(BaseModel):
-    dataset_id: str
-    endpoint_name: str
-    target: str
+    dataset_id: Optional[str] = None       # optional - will use most recent dataset if not provided
+    endpoint_name: Optional[str] = None    # optional - auto-generated
+    target: str = "rest_api"
     replicas: int = 1
     enable_monitoring: bool = True
     enable_logging: bool = True
@@ -140,7 +140,20 @@ def _build_monitoring_metrics(deployment_id: str, dataset: Dataset) -> Monitorin
 
 @router.post("/deploy")
 async def deploy_model(body: DeployRequest, db: AsyncSession = Depends(get_db)):
-    dataset = await _get_dataset_or_404(body.dataset_id, db)
+    # Resolve dataset_id: use provided or fall back to most recent ready dataset
+    if body.dataset_id:
+        dataset = await _get_dataset_or_404(body.dataset_id, db)
+    else:
+        result = await db.execute(
+            select(Dataset)
+            .where(Dataset.status == "ready")
+            .order_by(Dataset.updated_at.desc())
+        )
+        dataset = result.scalars().first()
+        if dataset is None:
+            raise HTTPException(status_code=422, detail="No ready dataset found. Upload and train a dataset first.")
+        if not dataset.training_results:
+            raise HTTPException(status_code=422, detail="No training results found on the most recent dataset. Run training first.")
 
     if not dataset.training_results:
         raise HTTPException(status_code=422, detail="No training results found. Run training first.")
@@ -148,11 +161,14 @@ async def deploy_model(body: DeployRequest, db: AsyncSession = Depends(get_db)):
     best = _find_best_model(dataset.training_results)
     model_name = best.get("model_name", "unknown")
     deployment_id = str(uuid.uuid4())
-    endpoint_url = f"http://localhost:8080/predict/{body.endpoint_name}"
+
+    # Resolve endpoint_name
+    endpoint_name = body.endpoint_name or f"endpoint-{model_name[:20].lower().replace('_', '-')}"
+    endpoint_url = f"http://localhost:8080/predict/{endpoint_name}"
 
     deployment_record = {
         "deployment_id": deployment_id,
-        "endpoint_name": body.endpoint_name,
+        "endpoint_name": endpoint_name,
         "model_name": model_name,
         "target": body.target,
         "replicas": body.replicas,
@@ -173,7 +189,7 @@ async def deploy_model(body: DeployRequest, db: AsyncSession = Depends(get_db)):
     await db.execute(
         text("UPDATE datasets SET training_results=:r, updated_at=:now WHERE id=:id"),
         {
-            "id": body.dataset_id,
+            "id": str(dataset.id),
             "r": json.dumps(updated_results),
             "now": datetime.now(timezone.utc),
         },
@@ -182,7 +198,7 @@ async def deploy_model(body: DeployRequest, db: AsyncSession = Depends(get_db)):
 
     return {
         "deployment_id": deployment_id,
-        "endpoint_name": body.endpoint_name,
+        "endpoint_name": endpoint_name,
         "model_name": model_name,
         "status": "deployed",
         "url": endpoint_url,

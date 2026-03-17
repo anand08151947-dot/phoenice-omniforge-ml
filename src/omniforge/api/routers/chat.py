@@ -1,6 +1,9 @@
 """Chat router — Phase 12: LM Studio-backed AI assistant with rule-based fallback."""
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -30,8 +33,11 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    response: str
+    content: str
+    id: str
+    timestamp: str
     sources: list[str] = []
+    lm_studio_used: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -185,13 +191,25 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_db)):
         if available:
             try:
                 reply = await _call_lm_studio(messages)
-                return ChatResponse(response=reply, sources=["LM Studio"])
+                return ChatResponse(
+                    content=reply,
+                    id=str(uuid.uuid4()),
+                    timestamp=datetime.utcnow().isoformat(),
+                    sources=["LM Studio"],
+                    lm_studio_used=True,
+                )
             except Exception:
                 pass  # Fall through to rule-based
 
     # Rule-based fallback
     reply = _rule_based_response(body.message, dataset)
-    return ChatResponse(response=reply, sources=["OmniForge rule-based assistant"])
+    return ChatResponse(
+        content=reply,
+        id=str(uuid.uuid4()),
+        timestamp=datetime.utcnow().isoformat(),
+        sources=["OmniForge rule-based assistant"],
+        lm_studio_used=False,
+    )
 
 
 @router.get("/chat/status")
