@@ -254,6 +254,8 @@ export default function UploadPage() {
   const queryClient = useQueryClient()
   const setDataset = usePipelineStore((s) => s.setDataset)
   const setPhaseStatus = usePipelineStore((s) => s.setPhaseStatus)
+  const projectId = usePipelineStore((s) => s.projectId)
+  const actorName = usePipelineStore((s) => s.actorName)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [activeDatasetId, setActiveDatasetId] = useState<string | null>(null)
@@ -277,6 +279,8 @@ export default function UploadPage() {
     try {
       const formData = new FormData()
       formData.append('file', acceptedFiles[0])
+      if (projectId) formData.append('project_id', projectId)
+      if (actorName) formData.append('actor', actorName)
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       clearInterval(interval)
       setUploadProgress(100)
@@ -290,7 +294,7 @@ export default function UploadPage() {
     } finally {
       setTimeout(() => { setUploading(false); setUploadProgress(0) }, 800)
     }
-  }, [queryClient, setDataset, setPhaseStatus])
+  }, [queryClient, setDataset, setPhaseStatus, projectId, actorName])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

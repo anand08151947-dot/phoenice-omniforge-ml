@@ -5,11 +5,17 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Chip from '@mui/material/Chip'
 import Tooltip from '@mui/material/Tooltip'
+import Avatar from '@mui/material/Avatar'
+import Menu from '@mui/material/Menu'
+import MenuItem from '@mui/material/MenuItem'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import ChatIcon from '@mui/icons-material/Chat'
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import FolderOpenIcon from '@mui/icons-material/FolderOpen'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePipelineStore } from '../../stores/pipeline'
 
 interface TopBarProps {
@@ -17,8 +23,15 @@ interface TopBarProps {
   height: number
 }
 
+function actorInitials(name: string): string {
+  const parts = name.split(/[\s@._-]+/)
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || '?'
+}
+
 export default function TopBar({ sidebarWidth, height }: TopBarProps) {
-  const { themeMode, toggleTheme, datasetName, lmStudioOnline, setChatOpen, chatOpen } = usePipelineStore()
+  const navigate = useNavigate()
+  const { themeMode, toggleTheme, datasetName, projectName, actorName, lmStudioOnline, setChatOpen, chatOpen } = usePipelineStore()
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   return (
     <AppBar
@@ -42,6 +55,21 @@ export default function TopBar({ sidebarWidth, height }: TopBarProps) {
             OmniForge ML
           </Typography>
         </Box>
+
+        {/* Project chip */}
+        {projectName && (
+          <Tooltip title="Click to change project">
+            <Chip
+              icon={<FolderOpenIcon sx={{ fontSize: '14px !important' }} />}
+              label={projectName}
+              size="small"
+              variant="outlined"
+              color="primary"
+              onClick={() => navigate('/')}
+              sx={{ fontWeight: 600, fontSize: '0.78rem', mr: 1, cursor: 'pointer' }}
+            />
+          </Tooltip>
+        )}
 
         {/* Dataset label */}
         {datasetName && (
@@ -78,12 +106,27 @@ export default function TopBar({ sidebarWidth, height }: TopBarProps) {
             onClick={() => setChatOpen(!chatOpen)}
             size="small"
             color={chatOpen ? 'primary' : 'default'}
-            sx={{ bgcolor: chatOpen ? 'primary.main' : 'transparent', color: chatOpen ? 'white' : 'inherit', '&:hover': { bgcolor: chatOpen ? 'primary.dark' : undefined } }}
+            sx={{ bgcolor: chatOpen ? 'primary.main' : 'transparent', color: chatOpen ? 'white' : 'inherit', '&:hover': { bgcolor: chatOpen ? 'primary.dark' : undefined }, mr: 1 }}
           >
             <ChatIcon />
           </IconButton>
         </Tooltip>
+
+        {/* User avatar */}
+        <Tooltip title={actorName ? `Signed in as ${actorName}` : 'Set identity'}>
+          <Avatar
+            sx={{ width: 32, height: 32, bgcolor: 'secondary.main', fontSize: 12, cursor: 'pointer' }}
+            onClick={(e) => setAnchorEl(e.currentTarget)}
+          >
+            {actorName ? actorInitials(actorName) : '?'}
+          </Avatar>
+        </Tooltip>
+        <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+          {actorName && <MenuItem disabled sx={{ fontSize: 12 }}>{actorName}</MenuItem>}
+          <MenuItem onClick={() => { navigate('/'); setAnchorEl(null) }}>📁 Project Board</MenuItem>
+        </Menu>
       </Toolbar>
     </AppBar>
   )
 }
+

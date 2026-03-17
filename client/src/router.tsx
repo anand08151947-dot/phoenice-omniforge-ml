@@ -18,6 +18,8 @@ function RouteError() {
 }
 
 const HomePage = lazy(() => import('./pages/Home'))
+const ProjectsPage = lazy(() => import('./pages/Projects'))
+const ProjectDashboardPage = lazy(() => import('./pages/Projects/ProjectDashboard'))
 const UploadPage = lazy(() => import('./pages/Upload'))
 const PIIPage = lazy(() => import('./pages/PII'))
 const ProfilePage = lazy(() => import('./pages/Profile'))
@@ -46,7 +48,9 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     errorElement: <RouteError />,
     children: [
-      { index: true, element: <Wrap component={HomePage} /> },
+      { index: true, element: <Wrap component={ProjectsPage} /> },
+      { path: 'home', element: <Wrap component={HomePage} /> },
+      { path: 'projects/:id', element: <Wrap component={ProjectDashboardPage} /> },
       { path: 'upload', element: <Wrap component={UploadPage} /> },
       { path: 'pii', element: <Wrap component={PIIPage} /> },
       { path: 'profile', element: <Wrap component={ProfilePage} /> },

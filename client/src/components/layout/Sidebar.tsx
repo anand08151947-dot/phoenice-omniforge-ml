@@ -8,9 +8,11 @@ import Divider from '@mui/material/Divider'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Tooltip from '@mui/material/Tooltip'
+import Chip from '@mui/material/Chip'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { usePipelineStore } from '../../stores/pipeline'
 import StatusChip from '../shared/StatusChip'
+import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import SecurityIcon from '@mui/icons-material/Security'
@@ -58,6 +60,7 @@ export default function Sidebar({ width, topOffset }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const phaseStatus = usePipelineStore((s) => s.phaseStatus)
+  const projectName = usePipelineStore((s) => s.projectName)
 
   return (
     <Drawer
@@ -76,7 +79,42 @@ export default function Sidebar({ width, topOffset }: SidebarProps) {
         },
       }}
     >
-      <Box sx={{ px: 2, py: 1.5 }}>
+      {/* Project context header */}
+      <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+        {projectName ? (
+          <Box>
+            <Typography variant="caption" color="text.disabled" sx={{ textTransform: 'uppercase', letterSpacing: 1, fontWeight: 700 }}>
+              Active Project
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+              <FolderOpenIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+              <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 160 }}>{projectName}</Typography>
+            </Box>
+            <Chip
+              label="Change"
+              size="small"
+              variant="outlined"
+              sx={{ mt: 0.5, fontSize: 10, height: 18, cursor: 'pointer' }}
+              onClick={() => navigate('/')}
+            />
+          </Box>
+        ) : (
+          <Box>
+            <Typography variant="caption" color="text.disabled">No project selected</Typography>
+            <Box>
+              <Chip
+                label="Select Project"
+                size="small"
+                color="primary"
+                sx={{ mt: 0.5, fontSize: 10, height: 18, cursor: 'pointer' }}
+                onClick={() => navigate('/')}
+              />
+            </Box>
+          </Box>
+        )}
+      </Box>
+      <Divider />
+      <Box sx={{ px: 2, py: 1 }}>
         <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1 }}>
           Pipeline Steps
         </Typography>
@@ -119,3 +157,4 @@ export default function Sidebar({ width, topOffset }: SidebarProps) {
     </Drawer>
   )
 }
+

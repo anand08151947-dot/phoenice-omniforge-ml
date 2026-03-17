@@ -52,6 +52,9 @@ class Dataset(Base):
     selection_plan: Mapped[dict] = mapped_column(JSON, nullable=True)
     training_results: Mapped[dict] = mapped_column(JSON, nullable=True)
     evaluation_results: Mapped[dict] = mapped_column(JSON, nullable=True)
+    # Enterprise multi-project support (nullable for backward compat)
+    project_id: Mapped[str] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

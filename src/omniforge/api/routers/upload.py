@@ -7,7 +7,7 @@ from typing import Any
 
 import aiofiles
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,8 +60,14 @@ async def get_smart_profile(dataset_id: str, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/datasets", response_model=list[DatasetOut])
-async def list_datasets(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Dataset).order_by(Dataset.created_at.desc()))
+async def list_datasets(
+    project_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(Dataset).order_by(Dataset.created_at.desc())
+    if project_id:
+        q = q.where(Dataset.project_id == project_id)
+    result = await db.execute(q)
     datasets = result.scalars().all()
     return datasets
 
@@ -97,6 +103,8 @@ async def patch_dataset(dataset_id: str, body: DatasetPatch, db: AsyncSession = 
 @router.post("/upload", response_model=DatasetOut, status_code=status.HTTP_201_CREATED)
 async def upload_dataset(
     file: UploadFile = File(...),
+    project_id: str | None = Form(None),
+    actor: str | None = Form(None),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
 ):
@@ -134,6 +142,8 @@ async def upload_dataset(
         file_size=file_size,
         minio_path=minio_path,
         status=DatasetStatus.processing,
+        project_id=project_id,
+        created_by=actor,
     )
     db.add(dataset)
 
@@ -159,6 +169,17 @@ async def upload_dataset(
 
     await db.commit()
     await db.refresh(dataset)
+
+    # Audit log for project uploads (fire-and-forget)
+    if project_id:
+        try:
+            from .projects import log_audit
+            await log_audit(db, "dataset.upload", actor=actor or "unknown",
+                            project_id=project_id, dataset_id=dataset_id,
+                            detail={"filename": filename, "size": file_size})
+            await db.commit()
+        except Exception:
+            pass
 
     if not celery_ok:
         from ...api.routers.profile import _run_profiling_inline
