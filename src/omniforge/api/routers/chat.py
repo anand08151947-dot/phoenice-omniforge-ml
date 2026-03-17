@@ -169,6 +169,16 @@ async def chat(body: ChatRequest, db: AsyncSession = Depends(get_db)):
     if body.dataset_id:
         result = await db.execute(select(Dataset).where(Dataset.id == body.dataset_id))
         dataset = result.scalar_one_or_none()
+    else:
+        # Auto-resolve to most recent ready dataset for context
+        from ...db.models.dataset import DatasetStatus
+        result = await db.execute(
+            select(Dataset)
+            .where(Dataset.status == DatasetStatus.ready)
+            .order_by(Dataset.updated_at.desc())
+            .limit(1)
+        )
+        dataset = result.scalar_one_or_none()
 
     # Build system prompt
     system_parts = [

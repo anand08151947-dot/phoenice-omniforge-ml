@@ -19,6 +19,7 @@ import { useState } from 'react'
 import PageHeader from '../../components/shared/PageHeader'
 import MonitoringPanel from './MonitoringPanel'
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch'
+import { usePipelineStore } from '../../stores/pipeline'
 
 const STEPS = ['Select Model', 'Configure Endpoint', 'Deploy', 'Monitor']
 
@@ -29,10 +30,18 @@ export default function DeployPage() {
   const [enableMonitoring, setEnableMonitoring] = useState(true)
   const [enableLogging, setEnableLogging] = useState(true)
   const [deploying, setDeploying] = useState(false)
+  const [deploymentId, setDeploymentId] = useState<string | undefined>(undefined)
+  const { datasetId } = usePipelineStore()
 
   async function handleDeploy() {
     setDeploying(true)
-    await fetch('/api/deploy', { method: 'POST', body: JSON.stringify({ target, replicas, enable_monitoring: enableMonitoring }) })
+    const deployRes = await fetch('/api/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, replicas, enable_monitoring: enableMonitoring, dataset_id: datasetId }),
+    })
+    const deployData = await deployRes.json()
+    setDeploymentId(deployData.deployment_id)
     setDeploying(false)
     setActiveStep(3)
   }
@@ -111,7 +120,7 @@ export default function DeployPage() {
             <Alert severity="success" sx={{ mb: 2 }}>
               ✅ Model deployed successfully! Endpoint: <code>https://api.omniforge.ai/v1/models/lgbm-churn-v1/predict</code>
             </Alert>
-            <MonitoringPanel />
+            <MonitoringPanel deploymentId={deploymentId} datasetId={datasetId} />
           </StepContent>
         </Step>
       </Stepper>

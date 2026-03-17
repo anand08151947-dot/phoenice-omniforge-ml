@@ -13,14 +13,20 @@ import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt'
 
 interface MonitoringPanelProps {
   deploymentId?: string
+  datasetId?: string
 }
 
 const driftColor = { stable: 'success', warning: 'warning', drift: 'error' } as const
 
-export default function MonitoringPanel({ deploymentId = 'dep_001' }: MonitoringPanelProps) {
+export default function MonitoringPanel({ deploymentId = 'dep_001', datasetId }: MonitoringPanelProps) {
   const { data, isLoading } = useQuery<MonitoringMetrics>({
-    queryKey: ['monitoring', deploymentId],
-    queryFn: () => fetch('/api/deploy/monitoring').then((r) => r.json()),
+    queryKey: ['monitoring', deploymentId, datasetId],
+    queryFn: () => {
+      const url = datasetId
+        ? `/api/deploy/monitoring?dataset_id=${datasetId}`
+        : '/api/deploy/monitoring'
+      return fetch(url).then((r) => r.json())
+    },
     refetchInterval: 10000,
   })
 
