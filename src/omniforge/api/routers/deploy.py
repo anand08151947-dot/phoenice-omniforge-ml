@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -236,3 +237,45 @@ async def list_deployments(dataset_id: str | None = None, db: AsyncSession = Dep
 
     deployments = dataset.training_results.get("deployments", [])
     return {"deployments": deployments}
+
+
+@router.get("/deploy/export")
+async def export_model(
+    dataset_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the best trained model as a pickle file."""
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    tr = dataset.training_results or {}
+    best_model = tr.get("best_model", "model")
+
+    # Try to find model file in MinIO
+    try:
+        from ...storage.minio import get_minio_client
+        from ...core.config import settings
+        client = get_minio_client()
+
+        # List objects in the models bucket for this dataset
+        objects = list(client.list_objects(settings.MINIO_BUCKET_MODELS, prefix=str(dataset_id)))
+        if not objects:
+            raise HTTPException(status_code=404, detail="No trained model found. Please train a model first.")
+
+        # Get the most recent model file
+        model_obj = sorted(objects, key=lambda o: o.last_modified, reverse=True)[0]
+        response_data = client.get_object(settings.MINIO_BUCKET_MODELS, model_obj.object_name)
+        model_bytes = response_data.read()
+
+        filename = f"{best_model.replace(' ', '_').lower()}_model.pkl"
+        return Response(
+            content=model_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export model: {str(e)}")
