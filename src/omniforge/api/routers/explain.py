@@ -410,6 +410,105 @@ async def get_shap_explanation(dataset_id: str, db: AsyncSession = Depends(get_d
     return explanation
 
 
+@router.get("/explain/pdp")
+async def get_pdp(
+    dataset_id: str,
+    feature: str,
+    n_points: int = 30,
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute a 1-D Partial Dependence Plot for one feature of the champion model.
+
+    Returns a list of {feature_value, mean_prediction, lower, upper} points that
+    the frontend renders as a line + confidence band.
+    """
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if not dataset.training_results:
+        raise HTTPException(status_code=422, detail="Run training first before computing PDP")
+    if not dataset.minio_path:
+        raise HTTPException(status_code=422, detail="No dataset file found")
+
+    def _compute(ds: Dataset, feat: str, pts: int) -> dict:
+        df = _load_df(ds.minio_path, ds.original_filename or "upload.csv")
+        task_type = ds.task_type.value if ds.task_type else "classification"
+        # Unsupervised tasks have no meaningful PDP
+        if task_type in ("clustering", "anomaly_detection", "forecasting", "text_classification"):
+            raise ValueError(f"PDP not available for task type: {task_type}")
+
+        model, X, feature_cols = _retrain_best_model(ds, df)
+
+        if feat not in feature_cols:
+            raise ValueError(f"Feature '{feat}' not in model features: {feature_cols[:10]}")
+
+        feat_idx = feature_cols.index(feat)
+        feat_vals = X[:, feat_idx]
+        grid = np.linspace(np.nanpercentile(feat_vals, 1), np.nanpercentile(feat_vals, 99), pts)
+
+        from sklearn.base import is_classifier as _is_clf
+        is_clf = _is_clf(model)
+
+        predictions: list[np.ndarray] = []
+        for val in grid:
+            X_mod = X.copy()
+            X_mod[:, feat_idx] = val
+            if is_clf and hasattr(model, "predict_proba"):
+                preds = model.predict_proba(X_mod)[:, -1]
+            else:
+                preds = model.predict(X_mod).astype(float)
+            predictions.append(preds)
+
+        points = []
+        for i, val in enumerate(grid):
+            arr = predictions[i]
+            points.append({
+                "feature_value": round(float(val), 6),
+                "mean_prediction": round(float(np.mean(arr)), 6),
+                "lower": round(float(np.percentile(arr, 10)), 6),
+                "upper": round(float(np.percentile(arr, 90)), 6),
+            })
+
+        return {
+            "feature": feat,
+            "task_type": task_type,
+            "is_classification": is_clf,
+            "n_samples": int(len(X)),
+            "points": points,
+        }
+
+    loop = asyncio.get_event_loop()
+    try:
+        pdp_result = await loop.run_in_executor(None, _compute, dataset, feature, n_points)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDP computation failed: {exc}") from exc
+
+    return pdp_result
+
+
+@router.get("/explain/features")
+async def list_pdp_features(dataset_id: str, db: AsyncSession = Depends(get_db)):
+    """Return the list of numeric features available for PDP (top 20 by importance)."""
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    tr = dataset.training_results or {}
+    best = _get_best_candidate(tr)
+    if best is None:
+        raise HTTPException(status_code=422, detail="No trained model found")
+    fi = best.get("feature_importances", [])
+    # Return top 20 numeric-ish features with importance > 0
+    features = [
+        {"feature": f["feature"], "importance": round(float(f.get("importance", 0)), 6)}
+        for f in fi if float(f.get("importance", 0)) > 0
+    ][:20]
+    return {"features": features}
+
+
 @router.get("/explain/counterfactual")
 async def get_counterfactual(dataset_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))

@@ -114,6 +114,21 @@ export default function EvaluationPage() {
     onError: () => setRunning(false),
   })
 
+  const promoteMutation = useMutation<unknown, Error, { dataset_id: string; model_id: string; stage: string }>({
+    mutationFn: (body) =>
+      fetch('/api/evaluation/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}))
+          throw new Error(err.detail || 'Promotion failed')
+        }
+        return r.json()
+      }),
+  })
+
   const colDefs: any[] = useMemo(() => [
     { field: 'rank', headerName: '#', width: 55, sortable: true },
     { field: 'model_name', headerName: 'Model', flex: 2, sortable: true,
@@ -468,9 +483,34 @@ export default function EvaluationPage() {
           )}
 
           {/* Promote button */}
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button variant="contained" color="success" startIcon={<RocketLaunchIcon />} size="large" disabled>
-              Promote Champion to Production (Phase 11)
+          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 2, alignItems: 'center' }}>
+            {promoteMutation.isSuccess && (
+              <Alert severity="success" sx={{ py: 0 }}>
+                ✅ Champion model promoted to Production successfully!
+              </Alert>
+            )}
+            {promoteMutation.isError && (
+              <Alert severity="error" sx={{ py: 0 }}>
+                Promotion failed: {(promoteMutation.error as Error)?.message ?? 'Unknown error'}
+              </Alert>
+            )}
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<RocketLaunchIcon />}
+              size="large"
+              disabled={promoteMutation.isPending || promoteMutation.isSuccess}
+              onClick={() => {
+                if (data?.champion_model_id) {
+                  promoteMutation.mutate({
+                    dataset_id: datasetId!,
+                    model_id: data.champion_model_id,
+                    stage: 'production',
+                  })
+                }
+              }}
+            >
+              {promoteMutation.isPending ? 'Promoting…' : promoteMutation.isSuccess ? 'Promoted ✓' : 'Promote Champion to Production'}
             </Button>
           </Box>
         </>
