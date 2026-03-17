@@ -34,6 +34,8 @@ dependencies = [
     "ydata-profiling>=4.9.0",
     # Sync DB driver for Celery
     "psycopg2-binary>=2.9.0",
+    # Class balancing
+    "imbalanced-learn>=0.12.0",
 ]
 
 [project.optional-dependencies]

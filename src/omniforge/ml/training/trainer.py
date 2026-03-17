@@ -402,8 +402,10 @@ def _extract_params(model) -> dict:
 
 def _train_model_cv(model, X: np.ndarray, y: np.ndarray,
                     cv_splitter, is_classifier: bool,
-                    feature_cols: list[str]) -> dict:
+                    feature_cols: list[str],
+                    sampling_strategy: str = "none") -> dict:
     """Manual CV loop — captures per-fold metrics + all expert diagnostics."""
+    from omniforge.ml.sampling.balancer import apply_sampling
     fold_cv_scores: list[float] = []
     fold_train_scores: list[float] = []
     all_val_true: list = []
@@ -414,6 +416,10 @@ def _train_model_cv(model, X: np.ndarray, y: np.ndarray,
     for train_idx, val_idx in cv_splitter.split(X, y if is_classifier else None):
         X_train, X_val = X[train_idx], X[val_idx]
         y_train, y_val = y[train_idx], y[val_idx]
+
+        # Apply sampling strategy on fold training data only
+        if is_classifier:
+            X_train, y_train = apply_sampling(X_train, y_train, strategy=sampling_strategy)
 
         m = clone(model)
         m.fit(X_train, y_train)
@@ -1422,7 +1428,8 @@ def run_training(
         model = cfg["model"]
         t0 = time.time()
         try:
-            diag = _train_model_cv(model, X, y, cv_splitter, is_classifier, feature_cols)
+            diag = _train_model_cv(model, X, y, cv_splitter, is_classifier, feature_cols,
+                                   sampling_strategy=strategy)
             result: dict[str, Any] = {
                 "id": cfg["id"],
                 "model_name": cfg["model_name"],
@@ -1635,7 +1642,8 @@ def retrain_single_model(
     )
 
     t0 = time.time()
-    diag = _train_model_cv(model, X, y, cv_splitter, is_classifier, feature_cols)
+    diag = _train_model_cv(model, X, y, cv_splitter, is_classifier, feature_cols,
+                           sampling_strategy=strategy)
     result: dict[str, Any] = {
         "id": model_id,
         "model_name": model_name,
