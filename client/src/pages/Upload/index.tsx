@@ -236,6 +236,7 @@ function SmartSetupPanel({ dataset, onSaved }: { dataset: Dataset; onSaved: () =
                 <MenuItem value="regression">Regression</MenuItem>
                 <MenuItem value="clustering">Clustering</MenuItem>
                 <MenuItem value="anomaly_detection">Anomaly Detection</MenuItem>
+                <MenuItem value="text_classification">Text Classification</MenuItem>
                 <MenuItem value="forecasting">Forecasting</MenuItem>
               </Select>
             </FormControl>

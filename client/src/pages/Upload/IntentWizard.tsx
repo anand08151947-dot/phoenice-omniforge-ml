@@ -11,6 +11,7 @@ const INTENT_OPTIONS = [
   { label: '💰 Future sales amount', task: 'regression', example: 'Predict a number' },
   { label: '👥 Customer segment', task: 'clustering', example: 'Discover hidden groups' },
   { label: '🚨 Detect unusual transactions', task: 'anomaly_detection', example: 'Find rare events' },
+  { label: '📝 Classify text / reviews', task: 'text_classification', example: 'Sentiment, topic, spam' },
   { label: '📈 Forecast future values', task: 'forecasting', example: 'Predict using timeline' },
 ]
 

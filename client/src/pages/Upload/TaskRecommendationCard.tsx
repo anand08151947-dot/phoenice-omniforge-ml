@@ -15,6 +15,7 @@ const TASK_DESCRIPTIONS: Record<string, string> = {
   regression: 'Predict a number (price, score, amount, rating)',
   clustering: 'Discover hidden groups without labels (unsupervised)',
   anomaly_detection: 'Find rare unusual cases in your data',
+  text_classification: 'Classify free-text using TF-IDF + NLP models (NB, SVM, LR)',
   forecasting: 'Predict future values using past timeline',
 }
 

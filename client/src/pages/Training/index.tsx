@@ -148,6 +148,7 @@ export default function TrainingPage() {
   const isClassifier = data?.task_type === 'classification'
   const isClustering = data?.task_type === 'clustering'
   const isAnomalyDetection = data?.task_type === 'anomaly_detection'
+  const isNLP = data?.task_type === 'text_classification'
   const isUnsupervised = isClustering || isAnomalyDetection
 
   return (
@@ -227,6 +228,16 @@ export default function TrainingPage() {
             </Alert>
           )}
 
+          {/* NLP info banner */}
+          {isNLP && (
+            <Alert severity="info" icon={<InfoOutlinedIcon />} sx={{ mb: 2 }}>
+              <strong>Text Classification</strong> — TF-IDF vectorization + NLP models (Naive Bayes, Linear SVM, Logistic Regression).
+              Text column: <strong>{(data as any).text_column ?? 'auto-detected'}</strong> ·
+              Vocab size: <strong>{(data as any).vocab_size?.toLocaleString() ?? '—'}</strong> ·
+              Ranked by weighted F1 score.
+            </Alert>
+          )}
+
           {/* Leakage Warnings */}
           {(data.leakage_warnings?.length ?? 0) > 0 && (
             <Alert
@@ -250,7 +261,7 @@ export default function TrainingPage() {
           {/* Leaderboard */}
           <SectionCard
             title="Model Leaderboard"
-            subheader={`${data.candidates.length} models trained · Ranked by ${isClustering ? 'Silhouette Score' : isAnomalyDetection ? 'Contamination Match' : isClassifier ? 'CV Accuracy' : 'CV R²'} · Click Details to inspect per-fold scores, class metrics, and threshold analysis`}
+            subheader={`${data.candidates.length} models trained · Ranked by ${isClustering ? 'Silhouette Score' : isAnomalyDetection ? 'Contamination Match' : isNLP ? 'Weighted F1' : isClassifier ? 'CV Accuracy' : 'CV R²'} · Click Details to inspect per-fold scores, class metrics, and threshold analysis`}
           >
             <TableContainer>
               <Table size="small">
@@ -260,7 +271,7 @@ export default function TrainingPage() {
                     <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Library</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>
-                      {isClustering ? 'Silhouette ± σ' : isAnomalyDetection ? 'Contamination' : isClassifier ? 'CV Accuracy ± σ' : 'CV R² ± σ'}
+                      {isClustering ? 'Silhouette ± σ' : isAnomalyDetection ? 'Contamination' : isNLP ? 'Accuracy' : isClassifier ? 'CV Accuracy ± σ' : 'CV R² ± σ'}
                       <Tooltip title="Mean ± Std deviation across 5 folds. Lower σ = more stable model.">
                         <InfoOutlinedIcon sx={{ fontSize: 14, ml: 0.5, verticalAlign: 'middle', color: 'text.secondary' }} />
                       </Tooltip>
@@ -271,11 +282,12 @@ export default function TrainingPage() {
                         <InfoOutlinedIcon sx={{ fontSize: 14, ml: 0.5, verticalAlign: 'middle', color: 'text.secondary' }} />
                       </Tooltip>
                     </TableCell>
-                    {isClassifier && <TableCell sx={{ fontWeight: 700 }}>F1 (weighted)</TableCell>}
+                    {(isClassifier || isNLP) && <TableCell sx={{ fontWeight: 700 }}>F1 (weighted)</TableCell>}
                     {isClassifier && <TableCell sx={{ fontWeight: 700 }}>AUC-ROC</TableCell>}
+                    {isNLP && <TableCell sx={{ fontWeight: 700 }}>Vocab Size</TableCell>}
                     {isClustering && <TableCell sx={{ fontWeight: 700 }}>N Clusters</TableCell>}
                     {isAnomalyDetection && <TableCell sx={{ fontWeight: 700 }}>N Anomalies</TableCell>}
-                    {!isClassifier && !isUnsupervised && <TableCell sx={{ fontWeight: 700 }}>RMSE</TableCell>}
+                    {!isClassifier && !isNLP && !isUnsupervised && <TableCell sx={{ fontWeight: 700 }}>RMSE</TableCell>}
                     <TableCell sx={{ fontWeight: 700 }}>Train Time</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Details</TableCell>
@@ -285,7 +297,7 @@ export default function TrainingPage() {
                   {data.candidates.map((c, idx) => {
                     const isBest = idx === 0 && c.status === 'done'
                     const isExpanded = expandedId === c.id
-                    const colSpan = isClassifier ? 10 : isUnsupervised ? 9 : 9
+                    const colSpan = isClassifier ? 10 : isNLP ? 10 : isUnsupervised ? 9 : 9
 
                     return (
                       <React.Fragment key={c.id}>
@@ -318,7 +330,7 @@ export default function TrainingPage() {
                           <TableCell>
                             <OverfitBadge trainScore={c.train_score} cvScore={c.cv_score} />
                           </TableCell>
-                          {isClassifier && (
+                          {(isClassifier || isNLP) && (
                             <TableCell>
                               <ScoreBadge value={c.f1} />
                             </TableCell>
@@ -326,6 +338,11 @@ export default function TrainingPage() {
                           {isClassifier && (
                             <TableCell>
                               <ScoreBadge value={c.auc_roc} />
+                            </TableCell>
+                          )}
+                          {isNLP && (
+                            <TableCell>
+                              <Typography variant="body2">{(c as any).vocab_size?.toLocaleString() ?? '—'}</Typography>
                             </TableCell>
                           )}
                           {isClustering && (
@@ -338,7 +355,7 @@ export default function TrainingPage() {
                               <Typography variant="body2">{c.n_anomalies ?? '—'}</Typography>
                             </TableCell>
                           )}
-                          {!isClassifier && !isUnsupervised && (
+                          {!isClassifier && !isNLP && !isUnsupervised && (
                             <TableCell>
                               <Typography variant="body2">{c.rmse?.toFixed(4) ?? '—'}</Typography>
                             </TableCell>

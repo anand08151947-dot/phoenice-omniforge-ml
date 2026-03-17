@@ -506,7 +506,213 @@ def _train_model_cv(model, X: np.ndarray, y: np.ndarray,
     }
 
 
-# ─── unsupervised trainers ────────────────────────────────────────────────────
+# ─── NLP text classification ──────────────────────────────────────────────────
+
+def _detect_text_columns(df: pd.DataFrame, exclude: str | None = None,
+                          min_avg_words: float = 3.0) -> list[str]:
+    """Return columns that look like free text (high avg word count, object dtype)."""
+    text_cols = []
+    for col in df.columns:
+        if col == exclude:
+            continue
+        if df[col].dtype != "object":
+            continue
+        sample = df[col].dropna().astype(str).head(500)
+        if len(sample) == 0:
+            continue
+        avg_words = sample.apply(lambda x: len(x.split())).mean()
+        if avg_words >= min_avg_words:
+            text_cols.append(col)
+    return text_cols
+
+
+def _run_nlp_classification(
+    dataset_id: str,
+    df: pd.DataFrame,
+    text_col: str,
+    target_column: str,
+    max_features: int = 10_000,
+    ngram_range: tuple = (1, 2),
+) -> dict:
+    """TF-IDF + Naive Bayes / LinearSVC / Logistic Regression text classifier."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.naive_bayes import MultinomialNB
+    from sklearn.svm import LinearSVC
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.preprocessing import LabelEncoder
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+    from sklearn.metrics import (
+        f1_score as f1_metric, accuracy_score, classification_report,
+        confusion_matrix,
+    )
+    import scipy.sparse as sp
+
+    # ── Prepare text + labels ────────────────────────────────────────────────
+    texts = df[text_col].fillna("").astype(str).tolist()
+    raw_labels = df[target_column].astype(str).tolist()
+
+    le = LabelEncoder()
+    y = le.fit_transform(raw_labels)
+    classes = le.classes_.tolist()
+    n_classes = len(classes)
+
+    # ── TF-IDF vectorization ─────────────────────────────────────────────────
+    # Use sublinear TF to reduce impact of very frequent terms
+    tfidf = TfidfVectorizer(
+        max_features=max_features,
+        ngram_range=ngram_range,
+        sublinear_tf=True,
+        strip_accents="unicode",
+        analyzer="word",
+        min_df=2,
+    )
+    X = tfidf.fit_transform(texts)
+    vocab_size = X.shape[1]
+
+    # Top terms by TF-IDF weight (global)
+    feature_names = tfidf.get_feature_names_out()
+    mean_tfidf = np.asarray(X.mean(axis=0)).ravel()
+    top_idx = np.argsort(mean_tfidf)[::-1][:20]
+    top_terms = [{"term": feature_names[i], "score": round(float(mean_tfidf[i]), 5)}
+                 for i in top_idx]
+
+    # ── CV ───────────────────────────────────────────────────────────────────
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    is_binary = n_classes == 2
+
+    models_cfg = [
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Naive Bayes (TF-IDF)",
+            "model": MultinomialNB(alpha=0.1),
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Linear SVM (TF-IDF)",
+            # Wrap in CalibratedClassifierCV so predict_proba is available
+            "model": CalibratedClassifierCV(LinearSVC(C=1.0, max_iter=2000), cv=3),
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "model_name": "Logistic Regression (TF-IDF)",
+            "model": LogisticRegression(C=1.0, max_iter=1000, solver="lbfgs",
+                                        multi_class="auto", n_jobs=-1),
+        },
+    ]
+
+    candidates = []
+    for cfg in models_cfg:
+        t0 = time.time()
+        model = cfg["model"]
+        try:
+            # cross_val_predict on sparse X
+            y_pred = cross_val_predict(model, X, y, cv=cv, method="predict")
+            acc = round(float(accuracy_score(y, y_pred)), 4)
+            f1 = round(float(f1_metric(y, y_pred, average="weighted", zero_division=0)), 4)
+
+            # Per-class metrics
+            report = classification_report(y, y_pred, target_names=classes,
+                                           output_dict=True, zero_division=0)
+            per_class = [
+                {
+                    "class": cls,
+                    "precision": round(float(report[cls]["precision"]), 4),
+                    "recall": round(float(report[cls]["recall"]), 4),
+                    "f1": round(float(report[cls]["f1-score"]), 4),
+                    "support": int(report[cls]["support"]),
+                }
+                for cls in classes if cls in report
+            ]
+
+            # Confusion matrix
+            cm_labels = list(range(n_classes))
+            cm = confusion_matrix(y, y_pred, labels=cm_labels)
+            cm_data = {
+                "labels": classes,
+                "values": cm.tolist(),
+            }
+
+            # Fit final model for complexity
+            final = clone(model)
+            final.fit(X, y)
+
+            result = {
+                "id": cfg["id"],
+                "model_name": cfg["model_name"],
+                "library": "sklearn",
+                "status": "done",
+                "progress": 100,
+                "cv_score": acc,
+                "cv_std": 0.0,
+                "cv_min": acc,
+                "cv_max": acc,
+                "train_score": acc,
+                "val_score": acc,
+                "f1": f1,
+                "auc_roc": 0.0,
+                "rmse": None,
+                "fold_scores": [],
+                "per_class_metrics": per_class,
+                "confusion_matrix_data": cm_data,
+                "threshold_analysis": [],
+                "roc_curve_data": [],
+                "pr_curve_data": [],
+                "vocab_size": vocab_size,
+                "top_terms": top_terms,
+                "n_classes": n_classes,
+                "text_column": text_col,
+                "hyperparams": {"max_features": max_features, "ngram_range": list(ngram_range)},
+                "n_features": vocab_size,
+                "feature_importances": [],
+                "complexity": {},
+                "learning_curve": [],
+                "train_time_s": round(time.time() - t0, 2),
+                "strengths": [f"Weighted F1 = {f1:.3f}", f"Vocab size = {vocab_size:,}"],
+                "weaknesses": [],
+            }
+        except Exception as exc:
+            result = {
+                "id": cfg["id"],
+                "model_name": cfg["model_name"],
+                "library": "sklearn",
+                "status": "failed",
+                "error": str(exc),
+                "cv_score": 0.0, "cv_std": 0.0, "cv_min": 0.0, "cv_max": 0.0,
+                "train_score": 0.0, "val_score": 0.0, "f1": 0.0, "auc_roc": 0.0,
+                "rmse": None, "fold_scores": [], "per_class_metrics": [],
+                "confusion_matrix_data": {}, "threshold_analysis": [],
+                "roc_curve_data": [], "pr_curve_data": [],
+                "vocab_size": 0, "top_terms": [], "n_classes": n_classes,
+                "text_column": text_col,
+                "hyperparams": {}, "n_features": 0,
+                "feature_importances": [], "complexity": {}, "learning_curve": [],
+                "train_time_s": round(time.time() - t0, 2),
+                "strengths": [], "weaknesses": [],
+            }
+        candidates.append(result)
+
+    candidates.sort(key=lambda c: c["cv_score"], reverse=True)
+
+    return {
+        "dataset_id": dataset_id,
+        "task_type": "text_classification",
+        "target_column": target_column,
+        "text_column": text_col,
+        "n_features": vocab_size,
+        "vocab_size": vocab_size,
+        "top_terms": top_terms,
+        "n_classes": n_classes,
+        "classes": classes,
+        "features_used": [text_col],
+        "sampling_strategy": "none",
+        "leakage_warnings": [],
+        "candidates": candidates,
+        "best_model": candidates[0]["model_name"] if candidates else None,
+        "best_cv_score": candidates[0].get("f1", 0.0) if candidates else 0.0,
+    }
+
+
+
 
 def _run_anomaly_detection(
     dataset_id: str,
@@ -829,6 +1035,23 @@ def run_training(
         contamination = (sampling_config or {}).get("config", {}).get("contamination", 0.05)
         contamination = min(max(float(contamination), 0.01), 0.49)
         return _run_anomaly_detection(dataset_id, df, feature_cols, contamination, target_column)
+
+    if task_type == "text_classification":
+        if not target_column:
+            raise ValueError("target_column is required for text_classification")
+        # Auto-detect best text column (highest avg word count, excluding target)
+        text_cols = _detect_text_columns(df, exclude=target_column)
+        if not text_cols:
+            # Fallback: use the first object column that isn't the target
+            text_cols = [c for c in df.columns if df[c].dtype == "object" and c != target_column]
+        if not text_cols:
+            raise ValueError(
+                "No text column found. text_classification requires at least one string column."
+            )
+        text_col = text_cols[0]
+        max_features = (sampling_config or {}).get("config", {}).get("max_tfidf_features", 10_000)
+        return _run_nlp_classification(dataset_id, df, text_col, target_column,
+                                       max_features=int(max_features))
 
     strategy = (sampling_config or {}).get("config", {}).get("strategy", "none")
     is_classifier = task_type in ("classification",)

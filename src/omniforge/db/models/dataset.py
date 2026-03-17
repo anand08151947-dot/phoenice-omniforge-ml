@@ -21,6 +21,7 @@ class TaskType(str, enum.Enum):
     regression = "regression"
     clustering = "clustering"
     anomaly_detection = "anomaly_detection"
+    text_classification = "text_classification"
     forecasting = "forecasting"
     unknown = "unknown"
 
