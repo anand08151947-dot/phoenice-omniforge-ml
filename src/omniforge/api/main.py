@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..core.config import settings
 from ..core.logging import setup_logging
-from .routers import upload, profile, pii, eda, cleaning, sampling, features, selection, training, evaluation
+from .routers import upload, profile, pii, eda, cleaning, sampling, features, selection, training, evaluation, session
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(session.router, prefix="/api", tags=["session"])
     app.include_router(upload.router, prefix="/api", tags=["datasets"])
     app.include_router(profile.router, prefix="/api", tags=["profile"])
     app.include_router(pii.router, prefix="/api", tags=["pii"])
