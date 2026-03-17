@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import io
 import json
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.models.dataset import Dataset
@@ -20,6 +21,12 @@ router = APIRouter()
 
 class EvaluationRunRequest(BaseModel):
     dataset_id: str
+
+
+class PromoteRequest(BaseModel):
+    dataset_id: str
+    model_id: str
+    stage: str = "production"
 
 
 def _run_evaluation_inline(
@@ -132,3 +139,72 @@ async def run_evaluation_endpoint(
     )
     await db.commit()
     return evaluation_results
+
+
+@router.post("/evaluation/promote")
+async def promote_model(body: PromoteRequest, db: AsyncSession = Depends(get_db)):
+    """Promote a model to a new stage (staging/production/archived)."""
+    result = await db.execute(select(Dataset).where(Dataset.id == body.dataset_id))
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    tr = dict(dataset.training_results or {})
+
+    leaderboard = tr.get("leaderboard", [])
+    promoted_model = None
+    for entry in leaderboard:
+        if entry.get("model_id") == body.model_id or entry.get("model_name") == body.model_id:
+            entry["stage"] = body.stage
+            promoted_model = entry
+        elif body.stage == "production" and entry.get("stage") == "production":
+            entry["stage"] = "staging"
+    tr["leaderboard"] = leaderboard
+
+    promotions = tr.get("promotions", [])
+    promotions.append({
+        "model_id": body.model_id,
+        "stage": body.stage,
+        "timestamp": _dt.datetime.utcnow().isoformat(),
+    })
+    tr["promotions"] = promotions
+
+    await db.execute(
+        update(Dataset).where(Dataset.id == body.dataset_id).values(training_results=tr)
+    )
+    await db.commit()
+
+    return {
+        "status": "promoted",
+        "model_id": body.model_id,
+        "stage": body.stage,
+        "deployment_id": f"dep_{body.model_id[:8].lower()}_{body.stage[:4]}",
+    }
+
+
+@router.get("/evaluation/model-card")
+async def get_model_card(dataset_id: str, db: AsyncSession = Depends(get_db)):
+    """Return structured model card for the champion model."""
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    tr = dataset.training_results or {}
+    best_model = tr.get("best_model", "Unknown")
+    best_score = tr.get("best_cv_score", 0)
+
+    return {
+        "model_name": best_model,
+        "task_type": dataset.task_type.value if dataset.task_type else "unknown",
+        "target_column": dataset.target_column,
+        "dataset_name": dataset.name,
+        "n_rows": dataset.row_count,
+        "n_features": dataset.col_count,
+        "cv_score": best_score,
+        "stage": tr.get("stage", "draft"),
+        "promotions": tr.get("promotions", []),
+        "leaderboard": tr.get("leaderboard", []),
+        "training_config": tr.get("training_config", {}),
+        "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+    }

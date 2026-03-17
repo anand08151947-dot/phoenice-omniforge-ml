@@ -90,6 +90,7 @@ export default function TrainingPage() {
   const [running, setRunning] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [tuningCandidate, setTuningCandidate] = useState<ModelCandidate | null>(null)
+  const [promotedId, setPromotedId] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery<TrainingResults>({
     queryKey: ['training', datasetId],
@@ -135,6 +136,16 @@ export default function TrainingPage() {
 
   function toggleExpand(id: string) {
     setExpandedId((prev) => (prev === id ? null : id))
+  }
+
+  async function handlePromote(modelName: string) {
+    if (!data?.dataset_id) return
+    await fetch('/api/evaluation/promote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataset_id: data.dataset_id, model_id: modelName, stage: 'production' }),
+    })
+    setPromotedId(modelName)
   }
 
   if (!datasetId) {
@@ -417,6 +428,17 @@ export default function TrainingPage() {
                                   sx={{ fontSize: '0.7rem', py: 0.25, px: 1 }}
                                 >
                                   Tune
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="success"
+                                  startIcon={<EmojiEventsIcon />}
+                                  onClick={() => handlePromote(c.model_name)}
+                                  disabled={promotedId === c.model_name}
+                                  sx={{ fontSize: '0.7rem', py: 0.25, px: 1 }}
+                                >
+                                  {promotedId === c.model_name ? 'Promoted ✓' : 'Promote'}
                                 </Button>
                               </Box>
                             )}
