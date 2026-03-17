@@ -35,13 +35,8 @@ def _run_profiling_inline(dataset_id: str, raw: bytes, filename: str):
     Session = _sm(bind=engine)
     session = Session()
     try:
-        fname = filename.lower()
-        if fname.endswith(".parquet"):
-            df = pd.read_parquet(io.BytesIO(raw))
-        elif fname.endswith(".json"):
-            df = pd.read_json(io.BytesIO(raw))
-        else:
-            df = pd.read_csv(io.BytesIO(raw))
+        from ...utils.dataframe_io import read_dataframe
+        df = read_dataframe(raw, filename)
 
         profile = profile_dataframe(dataset_id, df)
 

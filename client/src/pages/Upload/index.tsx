@@ -294,7 +294,7 @@ export default function UploadPage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'text/csv': ['.csv'], 'application/vnd.ms-excel': ['.xls', '.xlsx'], 'application/json': ['.json'], 'application/parquet': ['.parquet'] },
+    accept: { 'text/csv': ['.csv'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'], 'application/octet-stream': ['.parquet'], 'application/json': ['.json'] },
     maxFiles: 1,
   })
 

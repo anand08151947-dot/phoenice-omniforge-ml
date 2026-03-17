@@ -54,13 +54,8 @@ async def get_sampling(dataset_id: str, db: AsyncSession = Depends(get_db)):
             from ...core.config import settings as _s
             from ...storage.minio import download_bytes
             raw = download_bytes(_s.MINIO_BUCKET_DATASETS, dataset.minio_path)
-            fname = (dataset.original_filename or "upload.csv").lower()
-            if fname.endswith(".parquet"):
-                df = pd.read_parquet(io.BytesIO(raw))
-            elif fname.endswith(".json"):
-                df = pd.read_json(io.BytesIO(raw))
-            else:
-                df = pd.read_csv(io.BytesIO(raw))
+            from ...utils.dataframe_io import read_dataframe
+            df = read_dataframe(raw, dataset.original_filename or "upload.csv")
             if target_column in df.columns:
                 vc = df[target_column].value_counts().sort_values(ascending=False)
                 n = len(df)

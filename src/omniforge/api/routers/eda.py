@@ -42,13 +42,8 @@ def _run_eda_inline(dataset_id: str, minio_path: str, original_filename: str, ta
         tgt_col = target_column or (ds[1] if ds else None)
 
         raw = download_bytes(_s.MINIO_BUCKET_DATASETS, minio_path)
-        fname = original_filename.lower()
-        if fname.endswith(".parquet"):
-            df = pd.read_parquet(io.BytesIO(raw))
-        elif fname.endswith(".json"):
-            df = pd.read_json(io.BytesIO(raw))
-        else:
-            df = pd.read_csv(io.BytesIO(raw))
+        from ...utils.dataframe_io import read_dataframe
+        df = read_dataframe(raw, original_filename)
 
         report = analyze_dataframe(dataset_id, df, profile, tgt_col)
 

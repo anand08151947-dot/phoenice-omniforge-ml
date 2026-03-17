@@ -37,13 +37,8 @@ def _run_evaluation_inline(
     from ...ml.evaluation.evaluator import run_evaluation
 
     raw = download_bytes(_s.MINIO_BUCKET_DATASETS, minio_path)
-    fname = original_filename.lower()
-    if fname.endswith(".parquet"):
-        df = pd.read_parquet(io.BytesIO(raw))
-    elif fname.endswith(".json"):
-        df = pd.read_json(io.BytesIO(raw))
-    else:
-        df = pd.read_csv(io.BytesIO(raw))
+    from ...utils.dataframe_io import read_dataframe
+    df = read_dataframe(raw, original_filename)
 
     return run_evaluation(
         dataset_id=dataset_id,

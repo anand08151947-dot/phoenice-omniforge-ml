@@ -58,13 +58,8 @@ def _apply_cleaning_inline(dataset_id: str, minio_path: str, original_filename: 
     from sqlalchemy.orm import sessionmaker as _sm
 
     raw = download_bytes(_s.MINIO_BUCKET_DATASETS, minio_path)
-    fname = original_filename.lower()
-    if fname.endswith(".parquet"):
-        df = pd.read_parquet(io.BytesIO(raw))
-    elif fname.endswith(".json"):
-        df = pd.read_json(io.BytesIO(raw))
-    else:
-        df = pd.read_csv(io.BytesIO(raw))
+    from ...utils.dataframe_io import read_dataframe
+    df = read_dataframe(raw, original_filename)
 
     original_shape = df.shape
     actions = plan.get("actions", [])

@@ -41,12 +41,8 @@ def _load_df(minio_path: str, original_filename: str) -> pd.DataFrame:
     from ...core.config import settings as _s
     from ...storage.minio import download_bytes
     raw = download_bytes(_s.MINIO_BUCKET_DATASETS, minio_path)
-    fname = original_filename.lower()
-    if fname.endswith(".parquet"):
-        return pd.read_parquet(io.BytesIO(raw))
-    if fname.endswith(".json"):
-        return pd.read_json(io.BytesIO(raw))
-    return pd.read_csv(io.BytesIO(raw))
+    from ...utils.dataframe_io import read_dataframe
+    return read_dataframe(raw, original_filename)
 
 
 def _run_training_inline(

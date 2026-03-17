@@ -51,13 +51,8 @@ def run_pii_scan(self, dataset_id: str):
 
         self.update_state(state="PROGRESS", meta={"progress": 30})
 
-        fname = minio_path.lower()
-        if fname.endswith(".parquet"):
-            df = pd.read_parquet(io.BytesIO(raw))
-        elif fname.endswith(".json"):
-            df = pd.read_json(io.BytesIO(raw))
-        else:
-            df = pd.read_csv(io.BytesIO(raw))
+        from omniforge.utils.dataframe_io import read_dataframe
+        df = read_dataframe(raw, minio_path)
 
         self.update_state(state="PROGRESS", meta={"progress": 60})
 
