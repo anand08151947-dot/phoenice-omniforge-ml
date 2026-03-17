@@ -27,7 +27,7 @@ class Project(Base):
     # JSON array of {email: str, role: str}
     team_members: Mapped[list] = mapped_column(JSON, nullable=True, default=list)
     status: Mapped[ProjectStatus] = mapped_column(
-        SAEnum(ProjectStatus), default=ProjectStatus.active
+        SAEnum(ProjectStatus, native_enum=False), default=ProjectStatus.active
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
