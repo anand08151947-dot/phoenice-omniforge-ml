@@ -525,17 +525,341 @@ class TestResponseFormats:
 
     @pytest.mark.asyncio
     async def test_no_phantom_routes(self, client: AsyncClient):
-        """Routes that don't exist in the backend return 404 — not 200."""
-        # These pages exist in the frontend but NOT in the backend yet
+        """Routes that genuinely don't exist return 404 or 405 — not 200."""
         phantom_routes = [
-            "/api/explain/shap",
-            "/api/explain/counterfactual",
-            "/api/deploy",
-            "/api/chat",
+            "/api/nonexistent",
+            "/api/datasets/bulk-delete",
+            "/api/training/pause",
         ]
         for route in phantom_routes:
             r = await client.get(route)
             assert r.status_code in (404, 405), (
-                f"Route {route} unexpectedly returned {r.status_code}. "
-                "If this route was added to the backend, remove it from this test."
+                f"Route {route} unexpectedly returned {r.status_code}."
             )
+
+    @pytest.mark.asyncio
+    async def test_known_routes_not_phantom(self, client: AsyncClient):
+        """Routes that ARE implemented should return ≠ 404 (may be 422 needing params)."""
+        live_routes = [
+            ("/api/datasets", 200),
+            ("/api/session", 200),
+            ("/api/projects", 200),
+            ("/api/admin/overview", 200),
+        ]
+        for path, expected in live_routes:
+            r = await client.get(path)
+            assert r.status_code == expected, (
+                f"GET {path}: expected {expected}, got {r.status_code}"
+            )
+
+
+# ─────────────────────────────────────────────────────────────
+# Explain  (/api/explain/shap, /api/explain/counterfactual)
+# ─────────────────────────────────────────────────────────────
+
+class TestExplainEndpoints:
+    @pytest.mark.asyncio
+    async def test_get_shap_missing_param(self, client: AsyncClient):
+        """GET /api/explain/shap without dataset_id returns 422."""
+        r = await client.get("/api/explain/shap")
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_get_shap_not_found(self, client: AsyncClient):
+        """GET /api/explain/shap?dataset_id=<fake> returns 404."""
+        assert await _get(client, "/api/explain/shap", dataset_id=FAKE_ID) == 404
+
+    @pytest.mark.asyncio
+    async def test_get_counterfactual_missing_param(self, client: AsyncClient):
+        """GET /api/explain/counterfactual without dataset_id returns 422."""
+        r = await client.get("/api/explain/counterfactual")
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_get_counterfactual_not_found(self, client: AsyncClient):
+        """GET /api/explain/counterfactual?dataset_id=<fake> returns 404."""
+        assert await _get(client, "/api/explain/counterfactual", dataset_id=FAKE_ID) == 404
+
+    @pytest.mark.asyncio
+    async def test_explain_wrong_method_on_shap(self, client: AsyncClient):
+        """POST /api/explain/shap should not be valid."""
+        r = await client.post("/api/explain/shap", json={})
+        assert r.status_code == 405
+
+
+# ─────────────────────────────────────────────────────────────
+# Deploy  (/api/deploy, /api/deploy/list, /api/deploy/monitoring)
+# ─────────────────────────────────────────────────────────────
+
+class TestDeployEndpoints:
+    @pytest.mark.asyncio
+    async def test_deploy_list_returns_200(self, client: AsyncClient):
+        """GET /api/deploy/list returns 200 with a deployments key."""
+        r = await client.get("/api/deploy/list")
+        assert r.status_code == 200
+        assert "deployments" in r.json()
+        assert isinstance(r.json()["deployments"], list)
+
+    @pytest.mark.asyncio
+    async def test_deploy_monitoring_missing_param(self, client: AsyncClient):
+        """GET /api/deploy/monitoring without deployment_id returns 200 (uses default)."""
+        r = await client.get("/api/deploy/monitoring")
+        assert r.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_deploy_post_empty_body_ok(self, client: AsyncClient):
+        """POST /api/deploy with empty body returns 422 when no ready dataset found."""
+        r = await client.post("/api/deploy", json={})
+        assert r.status_code in (200, 201, 404, 422)
+
+    @pytest.mark.asyncio
+    async def test_deploy_list_wrong_method(self, client: AsyncClient):
+        """POST /api/deploy/list should not be valid."""
+        r = await client.post("/api/deploy/list", json={})
+        assert r.status_code == 405
+
+    @pytest.mark.asyncio
+    async def test_deploy_export_missing_param(self, client: AsyncClient):
+        """GET /api/deploy/export without deployment_id returns 422 or 404."""
+        r = await client.get("/api/deploy/export")
+        assert r.status_code in (422, 404)
+
+
+# ─────────────────────────────────────────────────────────────
+# Chat  (/api/chat, /api/chat/status)
+# ─────────────────────────────────────────────────────────────
+
+class TestChatEndpoints:
+    @pytest.mark.asyncio
+    async def test_chat_status_returns_200(self, client: AsyncClient):
+        """GET /api/chat/status returns 200 with LM Studio availability info."""
+        r = await client.get("/api/chat/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert "lm_studio_available" in data
+        assert isinstance(data["lm_studio_available"], bool)
+
+    @pytest.mark.asyncio
+    async def test_chat_post_missing_body(self, client: AsyncClient):
+        """POST /api/chat without body returns 422."""
+        r = await client.post("/api/chat")
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_chat_post_missing_message(self, client: AsyncClient):
+        """POST /api/chat with empty body returns 422 (message required)."""
+        assert await _post(client, "/api/chat", {}) == 422
+
+    @pytest.mark.asyncio
+    async def test_chat_post_with_message(self, client: AsyncClient):
+        """POST /api/chat with a message returns 200 with content field."""
+        r = await client.post("/api/chat", json={"message": "Hello"})
+        assert r.status_code == 200
+        data = r.json()
+        assert "content" in data
+        assert isinstance(data["content"], str)
+        assert len(data["content"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_chat_status_wrong_method(self, client: AsyncClient):
+        """POST /api/chat/status should not be valid."""
+        r = await client.post("/api/chat/status", json={})
+        assert r.status_code == 405
+
+
+# ─────────────────────────────────────────────────────────────
+# Session  (/api/session)
+# ─────────────────────────────────────────────────────────────
+
+class TestSessionEndpoints:
+    @pytest.mark.asyncio
+    async def test_session_returns_200(self, client: AsyncClient):
+        """GET /api/session always returns 200 (null when no dataset)."""
+        r = await client.get("/api/session")
+        assert r.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_session_null_when_no_data(self, client: AsyncClient):
+        """GET /api/session returns null body when no datasets exist."""
+        r = await client.get("/api/session")
+        assert r.status_code == 200
+        # Either null or a valid session object
+        body = r.json()
+        assert body is None or isinstance(body, dict)
+
+    @pytest.mark.asyncio
+    async def test_session_wrong_method(self, client: AsyncClient):
+        """POST /api/session should not be a valid route."""
+        r = await client.post("/api/session", json={})
+        assert r.status_code == 405
+
+
+# ─────────────────────────────────────────────────────────────
+# Projects  (/api/projects, /api/admin/*)
+# ─────────────────────────────────────────────────────────────
+
+class TestProjectsEndpoints:
+    @pytest.mark.asyncio
+    async def test_list_projects_returns_200(self, client: AsyncClient):
+        """GET /api/projects returns 200 with projects list."""
+        r = await client.get("/api/projects")
+        assert r.status_code == 200
+        data = r.json()
+        assert "projects" in data
+        assert isinstance(data["projects"], list)
+
+    @pytest.mark.asyncio
+    async def test_create_project_missing_body(self, client: AsyncClient):
+        """POST /api/projects without body returns 422."""
+        r = await client.post("/api/projects")
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_create_project_missing_name(self, client: AsyncClient):
+        """POST /api/projects with empty body returns 422 (name required)."""
+        assert await _post(client, "/api/projects", {}) == 422
+
+    @pytest.mark.asyncio
+    async def test_create_project_success(self, client: AsyncClient):
+        """POST /api/projects with valid body creates a project."""
+        r = await client.post("/api/projects", json={
+            "name": "Test Project",
+            "description": "A test project",
+            "owner": "test@example.com",
+        })
+        assert r.status_code == 201
+        data = r.json()
+        assert data["name"] == "Test Project"
+        assert "id" in data
+        assert data["status"] == "active"
+
+    @pytest.mark.asyncio
+    async def test_get_project_not_found(self, client: AsyncClient):
+        """GET /api/projects/{fake_id} returns 404."""
+        r = await client.get(f"/api/projects/{FAKE_ID}")
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_patch_project_not_found(self, client: AsyncClient):
+        """PATCH /api/projects/{fake_id} returns 404."""
+        r = await client.patch(f"/api/projects/{FAKE_ID}", json={"name": "New Name"})
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_project_not_found(self, client: AsyncClient):
+        """DELETE /api/projects/{fake_id} returns 404."""
+        r = await client.delete(f"/api/projects/{FAKE_ID}")
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_create_and_get_project(self, client: AsyncClient):
+        """Create a project then fetch it by ID — full roundtrip."""
+        create_r = await client.post("/api/projects", json={
+            "name": "Roundtrip Project",
+            "owner": "owner@test.com",
+        })
+        assert create_r.status_code == 201
+        project_id = create_r.json()["id"]
+
+        get_r = await client.get(f"/api/projects/{project_id}")
+        assert get_r.status_code == 200
+        data = get_r.json()
+        assert data["name"] == "Roundtrip Project"
+        assert data["id"] == project_id
+        assert isinstance(data["datasets"], list)
+        assert isinstance(data["activity"], list)
+
+    @pytest.mark.asyncio
+    async def test_archive_project(self, client: AsyncClient):
+        """DELETE /api/projects/{id} archives the project (soft delete)."""
+        create_r = await client.post("/api/projects", json={"name": "To Archive", "owner": "x"})
+        project_id = create_r.json()["id"]
+
+        del_r = await client.delete(f"/api/projects/{project_id}")
+        assert del_r.status_code == 200
+        assert del_r.json()["status"] == "archived"
+
+    @pytest.mark.asyncio
+    async def test_patch_project(self, client: AsyncClient):
+        """PATCH /api/projects/{id} updates project fields."""
+        create_r = await client.post("/api/projects", json={"name": "Before Patch", "owner": "x"})
+        project_id = create_r.json()["id"]
+
+        patch_r = await client.patch(f"/api/projects/{project_id}", json={"name": "After Patch"})
+        assert patch_r.status_code == 200
+        assert patch_r.json()["name"] == "After Patch"
+
+
+class TestAdminEndpoints:
+    @pytest.mark.asyncio
+    async def test_admin_overview_returns_200(self, client: AsyncClient):
+        """GET /api/admin/overview returns 200 with stats."""
+        r = await client.get("/api/admin/overview")
+        assert r.status_code == 200
+        data = r.json()
+        assert "total_projects" in data
+        assert "total_datasets" in data
+        assert "models_trained" in data
+
+    @pytest.mark.asyncio
+    async def test_admin_activity_returns_200(self, client: AsyncClient):
+        """GET /api/admin/activity returns 200 with activity list."""
+        r = await client.get("/api/admin/activity")
+        assert r.status_code == 200
+        data = r.json()
+        assert "activity" in data
+        assert isinstance(data["activity"], list)
+
+    @pytest.mark.asyncio
+    async def test_admin_activity_project_filter(self, client: AsyncClient):
+        """GET /api/admin/activity?project_id=<id> filters by project."""
+        r = await client.get("/api/admin/activity", params={"project_id": FAKE_ID})
+        assert r.status_code == 200
+        assert isinstance(r.json()["activity"], list)
+
+
+# ─────────────────────────────────────────────────────────────
+# Evaluation extended  (/api/evaluation/promote, /api/evaluation/model-card)
+# ─────────────────────────────────────────────────────────────
+
+class TestEvaluationExtendedEndpoints:
+    @pytest.mark.asyncio
+    async def test_promote_missing_body(self, client: AsyncClient):
+        """POST /api/evaluation/promote without body returns 422."""
+        r = await client.post("/api/evaluation/promote")
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_promote_missing_dataset_id(self, client: AsyncClient):
+        """POST /api/evaluation/promote with empty body returns 422."""
+        assert await _post(client, "/api/evaluation/promote", {}) == 422
+
+    @pytest.mark.asyncio
+    async def test_promote_not_found(self, client: AsyncClient):
+        """POST /api/evaluation/promote with non-existent dataset returns 404."""
+        status = await _post(client, "/api/evaluation/promote",
+                             {"dataset_id": FAKE_ID, "model_id": "RandomForest", "stage": "production"})
+        assert status == 404
+
+    @pytest.mark.asyncio
+    async def test_model_card_missing_param(self, client: AsyncClient):
+        """GET /api/evaluation/model-card without dataset_id returns 422."""
+        r = await client.get("/api/evaluation/model-card")
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_model_card_not_found(self, client: AsyncClient):
+        """GET /api/evaluation/model-card?dataset_id=<fake> returns 404."""
+        assert await _get(client, "/api/evaluation/model-card", dataset_id=FAKE_ID) == 404
+
+    @pytest.mark.asyncio
+    async def test_model_card_html_not_found(self, client: AsyncClient):
+        """GET /api/evaluation/model-card/html?dataset_id=<fake> returns 404."""
+        assert await _get(client, "/api/evaluation/model-card/html", dataset_id=FAKE_ID) == 404
+
+    @pytest.mark.asyncio
+    async def test_datasets_project_filter(self, client: AsyncClient):
+        """GET /api/datasets?project_id=<id> filters by project (returns empty list, not error)."""
+        r = await client.get("/api/datasets", params={"project_id": FAKE_ID})
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)

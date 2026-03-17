@@ -10,6 +10,7 @@ from omniforge.db.base import Base
 # Import models so SQLAlchemy registers them in Base.metadata
 import omniforge.db.models.dataset  # noqa: F401
 import omniforge.db.models.job  # noqa: F401
+import omniforge.db.models.project  # noqa: F401  (Project + AuditLog)
 from omniforge.db.session import get_db
 
 test_engine = create_async_engine(
