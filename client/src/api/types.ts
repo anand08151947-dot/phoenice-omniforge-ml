@@ -371,6 +371,19 @@ export interface ModelCandidate {
   optuna_best_score?: number
   optuna_n_trials?: number
   optuna_best_params?: Record<string, unknown>
+  // Clustering-specific
+  n_clusters?: number
+  silhouette_score?: number
+  inertia?: number | null
+  n_noise_points?: number
+  eps_auto?: number
+  // Anomaly detection-specific
+  n_anomalies?: number
+  detected_contamination?: number
+  configured_contamination?: number
+  anomaly_score_percentiles?: Record<string, number>
+  precision?: number
+  recall?: number
 }
 
 export interface TrainingResults {

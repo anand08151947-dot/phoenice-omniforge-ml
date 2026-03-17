@@ -181,12 +181,11 @@ async def get_hyperparameter_space(model_name: str):
 @router.post("/training/run")
 async def run_training_endpoint(body: TrainingRunRequest, db: AsyncSession = Depends(get_db)):
     dataset = await _get_dataset_or_404(body.dataset_id, db)
-    if not dataset.target_column:
+    task_type = dataset.task_type.value if dataset.task_type else "classification"
+    if not dataset.target_column and task_type not in ("clustering", "anomaly_detection"):
         raise HTTPException(status_code=422, detail="Target column not set")
     if not dataset.minio_path:
         raise HTTPException(status_code=422, detail="No dataset file found — run profiling first")
-
-    task_type = dataset.task_type.value if dataset.task_type else "classification"
     loop = asyncio.get_event_loop()
     try:
         training_results = await loop.run_in_executor(

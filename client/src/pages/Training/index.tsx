@@ -145,7 +145,10 @@ export default function TrainingPage() {
     )
   }
 
-  const isClassifier = data?.task_type === 'classification' || data?.task_type === 'anomaly_detection'
+  const isClassifier = data?.task_type === 'classification'
+  const isClustering = data?.task_type === 'clustering'
+  const isAnomalyDetection = data?.task_type === 'anomaly_detection'
+  const isUnsupervised = isClustering || isAnomalyDetection
 
   return (
     <Box>
@@ -216,6 +219,14 @@ export default function TrainingPage() {
             ))}
           </Grid>
 
+          {/* Unsupervised info banner */}
+          {isUnsupervised && (
+            <Alert severity="info" icon={<InfoOutlinedIcon />} sx={{ mb: 2 }}>
+              <strong>Unsupervised</strong> — no target column used for training. Quality metric:{' '}
+              {isClustering ? 'silhouette score (clustering)' : 'contamination rate (anomaly detection)'}.
+            </Alert>
+          )}
+
           {/* Leakage Warnings */}
           {(data.leakage_warnings?.length ?? 0) > 0 && (
             <Alert
@@ -239,7 +250,7 @@ export default function TrainingPage() {
           {/* Leaderboard */}
           <SectionCard
             title="Model Leaderboard"
-            subheader={`${data.candidates.length} models trained · Ranked by ${isClassifier ? 'CV Accuracy' : 'CV R²'} · Click Details to inspect per-fold scores, class metrics, and threshold analysis`}
+            subheader={`${data.candidates.length} models trained · Ranked by ${isClustering ? 'Silhouette Score' : isAnomalyDetection ? 'Contamination Match' : isClassifier ? 'CV Accuracy' : 'CV R²'} · Click Details to inspect per-fold scores, class metrics, and threshold analysis`}
           >
             <TableContainer>
               <Table size="small">
@@ -249,7 +260,7 @@ export default function TrainingPage() {
                     <TableCell sx={{ fontWeight: 700 }}>Model</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Library</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>
-                      {isClassifier ? 'CV Accuracy ± σ' : 'CV R² ± σ'}
+                      {isClustering ? 'Silhouette ± σ' : isAnomalyDetection ? 'Contamination' : isClassifier ? 'CV Accuracy ± σ' : 'CV R² ± σ'}
                       <Tooltip title="Mean ± Std deviation across 5 folds. Lower σ = more stable model.">
                         <InfoOutlinedIcon sx={{ fontSize: 14, ml: 0.5, verticalAlign: 'middle', color: 'text.secondary' }} />
                       </Tooltip>
@@ -262,7 +273,9 @@ export default function TrainingPage() {
                     </TableCell>
                     {isClassifier && <TableCell sx={{ fontWeight: 700 }}>F1 (weighted)</TableCell>}
                     {isClassifier && <TableCell sx={{ fontWeight: 700 }}>AUC-ROC</TableCell>}
-                    {!isClassifier && <TableCell sx={{ fontWeight: 700 }}>RMSE</TableCell>}
+                    {isClustering && <TableCell sx={{ fontWeight: 700 }}>N Clusters</TableCell>}
+                    {isAnomalyDetection && <TableCell sx={{ fontWeight: 700 }}>N Anomalies</TableCell>}
+                    {!isClassifier && !isUnsupervised && <TableCell sx={{ fontWeight: 700 }}>RMSE</TableCell>}
                     <TableCell sx={{ fontWeight: 700 }}>Train Time</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Details</TableCell>
@@ -272,7 +285,7 @@ export default function TrainingPage() {
                   {data.candidates.map((c, idx) => {
                     const isBest = idx === 0 && c.status === 'done'
                     const isExpanded = expandedId === c.id
-                    const colSpan = isClassifier ? 10 : 9
+                    const colSpan = isClassifier ? 10 : isUnsupervised ? 9 : 9
 
                     return (
                       <React.Fragment key={c.id}>
@@ -315,7 +328,17 @@ export default function TrainingPage() {
                               <ScoreBadge value={c.auc_roc} />
                             </TableCell>
                           )}
-                          {!isClassifier && (
+                          {isClustering && (
+                            <TableCell>
+                              <Typography variant="body2">{c.n_clusters ?? '—'}</Typography>
+                            </TableCell>
+                          )}
+                          {isAnomalyDetection && (
+                            <TableCell>
+                              <Typography variant="body2">{c.n_anomalies ?? '—'}</Typography>
+                            </TableCell>
+                          )}
+                          {!isClassifier && !isUnsupervised && (
                             <TableCell>
                               <Typography variant="body2">{c.rmse?.toFixed(4) ?? '—'}</Typography>
                             </TableCell>

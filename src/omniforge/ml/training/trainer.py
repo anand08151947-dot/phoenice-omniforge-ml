@@ -506,18 +506,332 @@ def _train_model_cv(model, X: np.ndarray, y: np.ndarray,
     }
 
 
+# ─── unsupervised trainers ────────────────────────────────────────────────────
+
+def _run_anomaly_detection(
+    dataset_id: str,
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    contamination: float,
+    ground_truth_col: str | None,
+) -> dict:
+    """Train IsolationForest + LOF ensemble for anomaly detection."""
+    from sklearn.ensemble import IsolationForest
+    from sklearn.neighbors import LocalOutlierFactor
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.metrics import precision_score, recall_score, f1_score as f1_metric
+    import uuid
+
+    X_raw = df[feature_cols].copy()
+    for col in X_raw.columns:
+        if X_raw[col].dtype == "object" or str(X_raw[col].dtype) == "category":
+            X_raw[col] = X_raw[col].fillna("__missing__")
+            from sklearn.preprocessing import LabelEncoder
+            le = LabelEncoder()
+            X_raw[col] = le.fit_transform(X_raw[col].astype(str))
+        else:
+            median = pd.to_numeric(X_raw[col], errors="coerce").median()
+            X_raw[col] = pd.to_numeric(X_raw[col], errors="coerce").fillna(median)
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X_raw.values)
+
+    candidates = []
+    models_cfg = [
+        {"id": str(uuid.uuid4()), "model_name": "Isolation Forest",
+         "model": IsolationForest(contamination=contamination, random_state=42, n_jobs=-1)},
+        {"id": str(uuid.uuid4()), "model_name": "Local Outlier Factor",
+         "model": LocalOutlierFactor(contamination=contamination, n_jobs=-1, novelty=False)},
+    ]
+
+    for cfg in models_cfg:
+        t0 = time.time()
+        model = cfg["model"]
+        try:
+            raw_labels = model.fit_predict(X)
+            is_anomaly = (raw_labels == -1).astype(int)
+
+            if hasattr(model, "decision_function"):
+                scores = -model.decision_function(X)
+            elif hasattr(model, "negative_outlier_factor_"):
+                scores = -model.negative_outlier_factor_
+            else:
+                scores = is_anomaly.astype(float)
+
+            n_anomalies = int(is_anomaly.sum())
+            detected_contamination = round(float(n_anomalies / len(is_anomaly)), 4)
+
+            sup_metrics: dict = {}
+            if ground_truth_col and ground_truth_col in df.columns:
+                try:
+                    y_gt = (pd.to_numeric(df[ground_truth_col], errors="coerce").fillna(0) != 0).astype(int).values
+                    sup_metrics["precision"] = round(float(precision_score(y_gt, is_anomaly, zero_division=0)), 4)
+                    sup_metrics["recall"] = round(float(recall_score(y_gt, is_anomaly, zero_division=0)), 4)
+                    sup_metrics["f1"] = round(float(f1_metric(y_gt, is_anomaly, zero_division=0)), 4)
+                except Exception:
+                    pass
+
+            score_pct = {
+                "p50": round(float(np.percentile(scores, 50)), 4),
+                "p90": round(float(np.percentile(scores, 90)), 4),
+                "p95": round(float(np.percentile(scores, 95)), 4),
+                "p99": round(float(np.percentile(scores, 99)), 4),
+            }
+
+            result = {
+                "id": cfg["id"],
+                "model_name": cfg["model_name"],
+                "library": "sklearn",
+                "status": "done",
+                "progress": 100,
+                "n_anomalies": n_anomalies,
+                "detected_contamination": detected_contamination,
+                "configured_contamination": contamination,
+                "anomaly_score_percentiles": score_pct,
+                "cv_score": detected_contamination,
+                "cv_std": 0.0,
+                "train_score": detected_contamination,
+                "f1": sup_metrics.get("f1", 0.0),
+                "auc_roc": 0.0,
+                "rmse": None,
+                **sup_metrics,
+                "hyperparams": {"contamination": contamination},
+                "n_features": len(feature_cols),
+                "train_time_s": round(time.time() - t0, 2),
+                "strengths": [f"Detected {n_anomalies} anomalies ({detected_contamination:.1%} of data)"],
+                "weaknesses": [],
+            }
+        except Exception as exc:
+            result = {
+                "id": cfg["id"],
+                "model_name": cfg["model_name"],
+                "library": "sklearn",
+                "status": "failed",
+                "error": str(exc),
+                "cv_score": 0.0, "cv_std": 0.0, "train_score": 0.0,
+                "f1": 0.0, "auc_roc": 0.0, "rmse": None,
+                "n_anomalies": 0, "detected_contamination": 0.0,
+                "hyperparams": {}, "n_features": len(feature_cols),
+                "train_time_s": round(time.time() - t0, 2),
+                "strengths": [], "weaknesses": [],
+            }
+        candidates.append(result)
+
+    candidates.sort(key=lambda c: abs(c.get("detected_contamination", 0) - contamination))
+
+    return {
+        "dataset_id": dataset_id,
+        "task_type": "anomaly_detection",
+        "target_column": ground_truth_col,
+        "n_features": len(feature_cols),
+        "features_used": feature_cols,
+        "sampling_strategy": "none",
+        "leakage_warnings": [],
+        "candidates": candidates,
+        "best_model": candidates[0]["model_name"] if candidates else None,
+        "best_cv_score": candidates[0].get("detected_contamination", 0.0) if candidates else 0.0,
+        "contamination": contamination,
+    }
+
+
+def _run_clustering(
+    dataset_id: str,
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    n_clusters: int = 8,
+) -> dict:
+    """Train KMeans + DBSCAN clustering and score with silhouette."""
+    from sklearn.cluster import KMeans, DBSCAN
+    from sklearn.metrics import silhouette_score
+    from sklearn.preprocessing import StandardScaler
+    import uuid
+
+    X_raw = df[feature_cols].copy()
+    for col in X_raw.columns:
+        if X_raw[col].dtype == "object" or str(X_raw[col].dtype) == "category":
+            X_raw[col] = X_raw[col].fillna("__missing__")
+            from sklearn.preprocessing import LabelEncoder
+            le = LabelEncoder()
+            X_raw[col] = le.fit_transform(X_raw[col].astype(str))
+        else:
+            median = pd.to_numeric(X_raw[col], errors="coerce").median()
+            X_raw[col] = pd.to_numeric(X_raw[col], errors="coerce").fillna(median)
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X_raw.values)
+
+    sample_size = min(5000, len(X))
+    rng = np.random.default_rng(42)
+    sample_idx = rng.choice(len(X), sample_size, replace=False)
+    X_sample = X[sample_idx]
+
+    candidates = []
+
+    best_k, best_sil, best_km_labels = 2, -1.0, None
+    max_k = min(n_clusters, int(np.sqrt(len(X))), 15)
+    max_k = max(max_k, 2)
+    km_model_id = str(uuid.uuid4())
+    t0 = time.time()
+    try:
+        for k in range(2, max_k + 1):
+            km = KMeans(n_clusters=k, random_state=42, n_init=5)
+            labels = km.fit_predict(X)
+            labels_sample = labels[sample_idx]
+            if len(np.unique(labels_sample)) < 2:
+                continue
+            sil = float(silhouette_score(X_sample, labels_sample))
+            if sil > best_sil:
+                best_sil = sil
+                best_k = k
+                best_km_labels = labels
+
+        best_km = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+        best_km.fit(X)
+        inertia = round(float(best_km.inertia_), 2)
+
+        candidates.append({
+            "id": km_model_id,
+            "model_name": "KMeans",
+            "library": "sklearn",
+            "status": "done",
+            "progress": 100,
+            "n_clusters": best_k,
+            "silhouette_score": round(best_sil, 4),
+            "inertia": inertia,
+            "cv_score": round(max(best_sil, 0.0), 4),
+            "cv_std": 0.0,
+            "train_score": round(max(best_sil, 0.0), 4),
+            "f1": 0.0,
+            "auc_roc": 0.0,
+            "rmse": None,
+            "hyperparams": {"n_clusters": best_k},
+            "n_features": len(feature_cols),
+            "train_time_s": round(time.time() - t0, 2),
+            "strengths": [
+                f"Found {best_k} clusters (silhouette={best_sil:.3f})",
+                "Deterministic, fast inference for new data",
+            ],
+            "weaknesses": ["Assumes spherical clusters", "Sensitive to outliers"],
+        })
+    except Exception as exc:
+        candidates.append({
+            "id": km_model_id, "model_name": "KMeans", "library": "sklearn",
+            "status": "failed", "error": str(exc),
+            "cv_score": 0.0, "cv_std": 0.0, "train_score": 0.0,
+            "f1": 0.0, "auc_roc": 0.0, "rmse": None,
+            "n_clusters": 0, "silhouette_score": 0.0, "inertia": 0.0,
+            "hyperparams": {}, "n_features": len(feature_cols),
+            "train_time_s": round(time.time() - t0, 2),
+            "strengths": [], "weaknesses": [],
+        })
+
+    dbscan_id = str(uuid.uuid4())
+    t0 = time.time()
+    try:
+        from sklearn.neighbors import NearestNeighbors
+        k_nn = 5
+        nn = NearestNeighbors(n_neighbors=k_nn, n_jobs=-1)
+        nn.fit(X_sample)
+        distances, _ = nn.kneighbors(X_sample)
+        k_distances = np.sort(distances[:, -1])
+        diffs = np.diff(k_distances)
+        eps = round(float(k_distances[int(np.argmax(diffs))]), 4)
+        eps = max(eps, 0.1)
+
+        db = DBSCAN(eps=eps, min_samples=5, n_jobs=-1)
+        db_labels = db.fit_predict(X)
+        n_found = int(len(set(db_labels)) - (1 if -1 in db_labels else 0))
+        n_noise = int(np.sum(db_labels == -1))
+
+        db_sil = 0.0
+        if n_found >= 2:
+            mask = db_labels[sample_idx] != -1
+            if mask.sum() >= 2 and len(np.unique(db_labels[sample_idx][mask])) >= 2:
+                db_sil = round(float(silhouette_score(X_sample[mask], db_labels[sample_idx][mask])), 4)
+
+        candidates.append({
+            "id": dbscan_id,
+            "model_name": "DBSCAN",
+            "library": "sklearn",
+            "status": "done",
+            "progress": 100,
+            "n_clusters": n_found,
+            "n_noise_points": n_noise,
+            "silhouette_score": db_sil,
+            "inertia": None,
+            "eps_auto": eps,
+            "cv_score": round(max(db_sil, 0.0), 4),
+            "cv_std": 0.0,
+            "train_score": round(max(db_sil, 0.0), 4),
+            "f1": 0.0,
+            "auc_roc": 0.0,
+            "rmse": None,
+            "hyperparams": {"eps": eps, "min_samples": 5},
+            "n_features": len(feature_cols),
+            "train_time_s": round(time.time() - t0, 2),
+            "strengths": [
+                f"Detected {n_found} clusters + {n_noise} noise points",
+                "Finds arbitrary cluster shapes",
+                "Automatically identifies outliers",
+            ],
+            "weaknesses": ["Sensitive to eps parameter", "Struggles with varying density"],
+        })
+    except Exception as exc:
+        candidates.append({
+            "id": dbscan_id, "model_name": "DBSCAN", "library": "sklearn",
+            "status": "failed", "error": str(exc),
+            "cv_score": 0.0, "cv_std": 0.0, "train_score": 0.0,
+            "f1": 0.0, "auc_roc": 0.0, "rmse": None,
+            "n_clusters": 0, "silhouette_score": 0.0, "inertia": None,
+            "hyperparams": {}, "n_features": len(feature_cols),
+            "train_time_s": round(time.time() - t0, 2),
+            "strengths": [], "weaknesses": [],
+        })
+
+    candidates.sort(key=lambda c: c["cv_score"], reverse=True)
+
+    return {
+        "dataset_id": dataset_id,
+        "task_type": "clustering",
+        "target_column": None,
+        "n_features": len(feature_cols),
+        "features_used": feature_cols,
+        "sampling_strategy": "none",
+        "leakage_warnings": [],
+        "candidates": candidates,
+        "best_model": candidates[0]["model_name"] if candidates else None,
+        "best_cv_score": candidates[0].get("silhouette_score", 0.0) if candidates else 0.0,
+    }
+
+
 # ─── entry point ─────────────────────────────────────────────────────────────
 
 def run_training(
     dataset_id: str,
     df: pd.DataFrame,
-    target_column: str,
+    target_column: str | None,
     task_type: str,
     selection_plan: dict | None,
     sampling_config: dict | None,
 ) -> dict:
+    # Dispatch unsupervised tasks first
+    if task_type == "clustering":
+        feature_cols = [c for c in df.columns if c != (target_column or "__none__")]
+        if selection_plan and selection_plan.get("importances"):
+            fc = _get_selected_features(selection_plan)
+            feature_cols = [f for f in fc if f in df.columns]
+        n_clusters = (sampling_config or {}).get("config", {}).get("n_clusters", 8)
+        return _run_clustering(dataset_id, df, feature_cols, n_clusters=n_clusters)
+
+    if task_type == "anomaly_detection":
+        feature_cols = [c for c in df.columns if c != (target_column or "__none__")]
+        if selection_plan and selection_plan.get("importances"):
+            fc = _get_selected_features(selection_plan)
+            feature_cols = [f for f in fc if f in df.columns]
+        contamination = (sampling_config or {}).get("config", {}).get("contamination", 0.05)
+        contamination = min(max(float(contamination), 0.01), 0.49)
+        return _run_anomaly_detection(dataset_id, df, feature_cols, contamination, target_column)
+
     strategy = (sampling_config or {}).get("config", {}).get("strategy", "none")
-    is_classifier = task_type in ("classification", "anomaly_detection")
+    is_classifier = task_type in ("classification",)
 
     if selection_plan and selection_plan.get("importances"):
         feature_cols = _get_selected_features(selection_plan)
